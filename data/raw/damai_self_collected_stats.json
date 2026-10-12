@@ -1,0 +1,8 @@
+{
+  "batch_dirs": 65,
+  "raw_total_rows": 418899,
+  "deduped_by_source_record_id": 168354,
+  "empty_source_record_id": 0,
+  "deduped_by_text_fingerprint": 129653,
+  "output_file": "data\\raw\\damai_self_collected_merged.csv"
+}

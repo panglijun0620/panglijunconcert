@@ -1,0 +1,27 @@
+# 编译产物
+target/
+*.jar
+*.class
+
+# 大文件（评论原始数据，超 GitHub 100MB 限制，不进仓库）
+data/raw/comments_raw_all_batches.csv
+data/raw/comments_upload.csv
+
+# 未并入最终批次的来源数据（网易云、B站/社交）
+data/raw/comments_wyy*.csv
+data/raw/wyy_part_*.csv
+data/raw/comments_social_merged.csv
+data/raw/piaoniu_concerts.csv.bak-before-expansion
+
+# 备份与废弃
+_backup*/
+scripts-废弃/
+文档-废弃/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+*.iml
