@@ -2,16 +2,17 @@
 target/
 *.jar
 *.class
+.env
+infra/distributed/.env
+*.pem
+*.key
 
 # 大文件（评论原始数据，超 GitHub 100MB 限制，不进仓库）
 data/raw/comments_raw_all_batches.csv
 data/raw/comments_upload.csv
-
-# 未并入最终批次的来源数据（网易云、B站/社交）
-data/raw/comments_wyy*.csv
-data/raw/wyy_part_*.csv
-data/raw/comments_social_merged.csv
-data/raw/piaoniu_concerts.csv.bak-before-expansion
+# Spark 清洗产物中的评论明细（单文件 120–192MB，同样超限；只保留汇总指标）
+data/cleaned/*/ods/raw/*/comments.jsonl
+data/cleaned/*/dwd/clean/*/comments.jsonl
 
 # 备份与废弃
 _backup*/
@@ -25,3 +26,4 @@ __pycache__/
 # IDE
 .idea/
 *.iml
+
