@@ -15,7 +15,6 @@ import csv
 import hashlib
 import json
 import random
-import shutil
 import threading
 import time
 from collections import Counter, defaultdict
@@ -379,50 +378,12 @@ def collect(projects: list[Project], workers: int, site_pages: int, tour_pages: 
     return list(site_rows.values()), list(tour_rows.values()), report
 
 
-def build_snapshot(base: Path, site: list[dict], tour: list[dict], output: Path, report: dict) -> None:
-    """复制基础数据并把新增大麦评论合并为可发布快照。"""
-    if output.exists():
-        raise FileExistsError(f"Snapshot already exists: {output}")
-    output.mkdir(parents=True)
-    names = ("concerts.csv", "legacy_analysis_results.csv", "legacy_ticket_prices.csv")
-    # 其他基础文件原样复制；只重新生成 comments.csv 和 manifest 计数/哈希。
-    for name in names:
-        shutil.copyfile(base / name, output / name)
-    with (base / "comments.csv").open(encoding="utf-8-sig", newline="") as source, \
-            (output / "comments.csv").open("w", encoding="utf-8", newline="") as target:
-        reader = csv.DictReader(source)
-        if tuple(reader.fieldnames or ()) != COMMENT_COLUMNS:
-            # 列顺序不匹配时停止，避免生成 Spark 无法读取的混合文件。
-            raise ValueError("Base comment columns do not match Spark input")
-        writer = csv.DictWriter(target, fieldnames=COMMENT_COLUMNS, lineterminator="\n")
-        writer.writeheader()
-        count = 0
-        for row in reader:
-            writer.writerow(row)
-            count += 1
-        for row in site + tour:
-            writer.writerow(row)
-            count += 1
-    manifest = json.loads((base / "manifest.json").read_text(encoding="utf-8"))
-    manifest["counts"]["comments"] = count
-    manifest["comment_sources"]["damai"] += len(site) + len(tour)
-    manifest["scope_policy"]["damai"] = "concert_only_when_item_id_matches"
-    manifest["scope_policy"]["damai_ip_aggregate"] = "artist_reference_only"
-    manifest["review_crawl"] = {key: value for key, value in report.items() if key != "failures"}
-    manifest["review_crawl"]["failed_requests"] = len(report["failures"])
-    for name in (*names, "comments.csv"):
-        manifest["files"][name] = hashlib.sha256((output / name).read_bytes()).hexdigest()
-    (output / "manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-
-
 def main() -> None:
     # --workers 控制并发项目数；site/tour-pages 控制两类评论最多翻多少页。
-    # limit 适合调试，指定后只输出采集结果，不生成完整 snapshot。
+    # --projects 必须明确指定本人采集并保留来源网址的大麦项目清单。
     parser = argparse.ArgumentParser(description="批量采集大麦本站评论与巡演热评样本")
-    parser.add_argument("--base", type=Path, default=Path("data/migration/current"))
-    parser.add_argument("--output", type=Path, default=Path("data/migration/damai-reviews-20260923"))
+    parser.add_argument("--projects", type=Path, required=True)
+    parser.add_argument("--output", type=Path, default=Path("data/raw/damai_reviews"))
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--site-pages", type=int, default=10)
     parser.add_argument("--tour-pages", type=int, default=1)
@@ -430,7 +391,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.workers < 1 or args.site_pages < 1 or args.tour_pages < 1:
         parser.error("workers and page limits must be positive")
-    projects = load_projects(args.base / "concerts.csv", args.limit)
+    projects = load_projects(args.projects, args.limit)
     site, tour, report = collect(projects, args.workers, args.site_pages, args.tour_pages)
     args.output.mkdir(parents=True, exist_ok=True)
     write_csv(args.output / "damai_site_comments.csv", site)
@@ -442,8 +403,6 @@ def main() -> None:
     print(json.dumps(report, ensure_ascii=False))
     if report["failures"]:
         raise SystemExit("Some requests failed; review crawl_report.json before publishing")
-    if not args.limit:
-        build_snapshot(args.base, site, tour, args.output / "snapshot", report)
 
 
 if __name__ == "__main__":

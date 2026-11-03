@@ -6,7 +6,8 @@
 读   : data/raw/piaoniu_concerts.csv      （票牛，自动翻页爬取）
      : data/raw/showstart_concerts.csv    （秀动，自动翻页爬取）
      : data/raw/concerts_public.csv       （公开新闻/政府公开页，人工整理快照）
-写   : data/raw/concerts_upload.csv       （合并后的上传文件，13 列）
+写   : data/raw/concerts_full_category.csv（全类别审计快照）
+     : data/raw/concerts_upload.csv       （正式上传文件，仅保留演唱会，14 列）
 
 【答辩讲解】这一步属于"数据准备"，不是清洗。清洗是上传到服务器后由 Spark 完成的。
 本脚本只做四件事：
@@ -17,12 +18,17 @@
   3. 票价拆解：票价原文是文本（如 "280/480/680/880/1080"），
      用正则抠出所有数字，最小的存 min_price、最大的存 max_price。
      这样后续才能按价格区间做统计。拆不出来的（如"待定"）留空，不瞎填。
-  4. 分类与来源标注：按演出名关键词判定 category（演唱会/音乐会/脱口秀…），
-     并按来源文件标注 source_type（piaoniu/showstart/public）。
+  4. 分类与范围控制：按演出名关键词判定 category（演唱会/音乐会/脱口秀…），
+     全类别写入审计快照，正式批次只保留“演唱会”；同时按来源文件标注
+     source_type（piaoniu/showstart/public）。
 """
 import csv
 import re
+from collections import Counter
+from datetime import date
+from html import unescape
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw"
@@ -34,16 +40,45 @@ SOURCES = [
 ]
 
 OUT = RAW / "concerts_upload.csv"
+FULL_CATEGORY_OUT = RAW / "concerts_full_category.csv"
+EXCLUDED_OUT = RAW / "concerts_excluded.csv"
+REVIEW_OUT = RAW / "concerts_review.csv"
+
+DOMESTIC_PUBLIC_HOSTS = ("news.qq.com", "bjd.com.cn")
+
+
+def source_url_reason(source_type: str, source_url: str) -> str:
+    """Allow only the declared domestic source domains in the final batch."""
+    value = (source_url or "").strip()
+    if not value:
+        return "missing source URL"
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme != "https" or parsed.username or parsed.password or not host:
+        return "invalid source URL"
+    allowed = {
+        "piaoniu": host == "piaoniu.com" or host.endswith(".piaoniu.com"),
+        "showstart": host == "showstart.com" or host.endswith(".showstart.com"),
+        "public": (
+            host in DOMESTIC_PUBLIC_HOSTS
+            or host.endswith(".gov.cn")
+            or host.endswith(".bjd.com.cn")
+        ),
+    }
+    if not allowed.get(source_type, False):
+        return f"source host is not an approved domestic {source_type} source"
+    return ""
 
 # 13 列：爬虫原始 10 列 + 本脚本拆解出的 min_price / max_price + 分类 category
 FIELDNAMES = [
-    "artist_name", "concert_name", "city", "venue", "show_time",
+    "artist_name", "concert_name", "city", "venue", "show_time", "show_time_precision",
     "price_text", "sale_status", "source_type", "source_url", "collected_at",
     "min_price", "max_price", "category",
 ]
 
 # 【答辩讲解】票价拆解：匹配文本里所有数字（含小数），例如 "380/580/780" → [380, 580, 780]
 PRICE_PATTERN = re.compile(r"\d+(?:\.\d+)?")
+NON_EVENT_PATTERN = re.compile(r"选排勿拍|验收演出|拼团勿拍|勿拍不发货|会员.*免服务费|优先配票")
 
 
 def split_price(price_text: str):
@@ -51,6 +86,7 @@ def split_price(price_text: str):
     if not price_text:
         return None, None
     numbers = [float(x) for x in PRICE_PATTERN.findall(price_text)]
+    numbers = [number for number in numbers if 0 < number <= 10000]
     if not numbers:
         return None, None
     return min(numbers), max(numbers)
@@ -97,6 +133,12 @@ def classify(name: str) -> str:
 # 【答辩讲解】演出时间归一化用的正则：匹配 "2026.09.12" / "2026-09-12" / "2026/09/12" 这类日期
 DATE_PATTERN = re.compile(r"(\d{4})[.\-/年](\d{1,2})[.\-/月](\d{1,2})")
 TIME_PATTERN = re.compile(r"(\d{1,2}):(\d{2})")
+CITY_PREFIX_PATTERN = re.compile(r"^\s*[\[【（(]([^\]】）)]{1,12})[\]】）)]\s*")
+EVENT_IDENTITY_NOISE = re.compile(r"[^0-9a-z\u4e00-\u9fff]+")
+IDENTITY_PLACEHOLDERS = {
+    "unknown", "场馆未公布", "场馆待定", "未公布", "待定", "暂无",
+    "未知艺人", "艺人待定",
+}
 
 
 def normalize_show_time(text: str) -> str:
@@ -114,26 +156,96 @@ def normalize_show_time(text: str) -> str:
     if not m:
         return ""
     year, month, day = m.groups()
-    result = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+    try:
+        result = date(int(year), int(month), int(day)).isoformat()
+    except ValueError:
+        return ""
     t = TIME_PATTERN.search(text)
     if t:
         result += f" {int(t.group(1)):02d}:{t.group(2)}"
     return result
 
 
-def row_key(row, show_time: str) -> tuple:
-    """【答辩讲解】去重键：演出名+城市+场馆+日期，四者都相同才认为是同一场。"""
+def normalize_event_identity(value: str) -> str:
+    """Remove punctuation and HTML entities before event-level deduplication."""
+    return EVENT_IDENTITY_NOISE.sub("", unescape(value or "").casefold())
+
+
+def normalize_event_name(value: str, city: str) -> str:
+    """Remove a leading bracket only when it is the listing's city label."""
+    normalized = unescape(value or "").casefold()
+    match = CITY_PREFIX_PATTERN.match(normalized)
+    city_key = normalize_event_identity(city)
+    if match and city_key:
+        prefix_key = normalize_event_identity(match.group(1))
+        if prefix_key in {city_key, f"{city_key}站"}:
+            normalized = normalized[match.end():]
+    return EVENT_IDENTITY_NOISE.sub("", normalized)
+
+
+def meaningful_identity(value: str) -> str:
+    normalized = normalize_event_identity(value)
+    placeholders = {normalize_event_identity(item) for item in IDENTITY_PLACEHOLDERS}
+    return "" if not normalized or normalized in placeholders else normalized
+
+
+def event_base_key(row, show_time: str) -> tuple:
     return (
-        (row.get("concert_name") or "").strip().casefold(),
-        (row.get("city") or "").strip().casefold(),
-        (row.get("venue") or "").strip().casefold(),
-        show_time[:10],
+        normalize_event_name(row.get("concert_name") or "", row.get("city") or ""),
+        normalize_event_identity(row.get("city") or ""),
+        show_time[:10] if show_time else "",
     )
+
+
+def row_key(row, show_time: str) -> tuple:
+    """Use venue first; fall back to artist/source evidence instead of merging different venues."""
+    base = event_base_key(row, show_time)
+    venue = meaningful_identity(row.get("venue") or "")
+    if venue:
+        return base + ("venue", venue)
+    artist = meaningful_identity(row.get("artist_name") or "")
+    if artist:
+        return base + ("artist", artist)
+    source_id = meaningful_identity(row.get("source_record_id") or "")
+    source_url = (row.get("source_url") or "").strip().casefold()
+    return base + ("source", (row.get("source_type") or "").strip().casefold(), source_id or source_url)
+
+
+def row_quality(row) -> tuple:
+    """Prefer the most complete traceable row when several listings describe one event."""
+    venue = normalize_event_identity(row.get("venue") or "")
+    artist = normalize_event_identity(row.get("artist_name") or "")
+    return (
+        1 if row.get("show_time_precision") == "DATETIME" else 0,
+        1 if venue and venue not in {"unknown", "场馆未公布", "场馆待定"} else 0,
+        1 if artist and artist not in {"unknown", "未知艺人", "艺人待定"} else 0,
+        1 if row.get("min_price") != "" or row.get("max_price") != "" else 0,
+    )
+
+
+def exclusion_reason(row) -> str:
+    evidence = " ".join((row.get(field) or "") for field in (
+        "artist_name", "concert_name", "venue", "price_text", "sale_status"))
+    if NON_EVENT_PATTERN.search(evidence):
+        return "ticketing/test listing rather than a public performance"
+    url_reason = source_url_reason(row.get("source_type", ""), row.get("source_url", ""))
+    if url_reason:
+        return url_reason
+    if not (row.get("collected_at") or "").strip():
+        return "missing collection timestamp"
+    return ""
+
+
+def price_needs_review(price_text: str) -> bool:
+    numbers = [float(x) for x in PRICE_PATTERN.findall(price_text or "")]
+    valid = [number for number in numbers if 0 < number <= 10000]
+    return len(valid) >= 2 and min(valid) < 1000 and max(valid) > 3000
 
 
 def main():
     merged = []
-    seen = set()
+    excluded = []
+    seen = {}
     stats = {}
 
     for source_type, path in SOURCES:
@@ -142,24 +254,32 @@ def main():
             continue
         with path.open(encoding="utf-8-sig", newline="") as fh:
             rows = list(csv.DictReader(fh))
-        kept = 0
-        for row in rows:
+        for raw_row in rows:
+            row = {**raw_row, "source_type": source_type}
+            reason = exclusion_reason(row)
+            if reason:
+                excluded.append({**row, "source_type": source_type, "exclusion_reason": reason})
+                continue
             name = (row.get("concert_name") or "").strip()
             if not name:
+                excluded.append({**row, "source_type": source_type, "exclusion_reason": "missing performance name"})
                 continue  # 【答辩讲解】演出名为空的记录无法使用，直接丢弃
             show_time = normalize_show_time(row.get("show_time") or "")
-            key = row_key(row, show_time)
-            if key in seen:
-                continue  # 跨源重复，只保留第一次出现
-            seen.add(key)
-
-            min_price, max_price = split_price(row.get("price_text") or "")
-            merged.append({
+            if not show_time:
+                excluded.append({**row, "source_type": source_type, "exclusion_reason": "missing or invalid performance date"})
+                continue
+            source_price = row.get("price_text") or ""
+            min_price, max_price = split_price(source_price)
+            price_review = price_needs_review(source_price)
+            if price_review:
+                min_price, max_price = None, None
+            output_row = {
                 "artist_name": (row.get("artist_name") or "").strip(),
                 "concert_name": name,
                 "city": (row.get("city") or "").strip(),
                 "venue": (row.get("venue") or "").strip(),
                 "show_time": show_time,
+                "show_time_precision": "DATETIME" if TIME_PATTERN.search(row.get("show_time") or "") else "DATE",
                 "price_text": (row.get("price_text") or "").strip(),
                 "sale_status": (row.get("sale_status") or "").strip(),
                 "source_type": source_type,
@@ -168,26 +288,85 @@ def main():
                 "min_price": "" if min_price is None else min_price,
                 "max_price": "" if max_price is None else max_price,
                 "category": classify(name),
-            })
-            kept += 1
-        stats[source_type] = {"原始": len(rows), "保留": kept}
+            }
+            key = row_key(output_row, show_time)
+            existing_index = seen.get(key)
+            if existing_index is not None:
+                existing = merged[existing_index]
+                if row_quality(output_row) > row_quality(existing):
+                    excluded.append({
+                        **existing,
+                        "exclusion_reason": "duplicate normalized event; replaced by a more complete source row",
+                    })
+                    merged[existing_index] = output_row
+                else:
+                    excluded.append({
+                        **output_row,
+                        "exclusion_reason": "duplicate normalized event; a more complete source row was retained",
+                    })
+                continue
+            seen[key] = len(merged)
+            merged.append(output_row)
+        stats[source_type] = {"原始": len(rows)}
+
+    full_category = list(merged)
+    non_concerts = [row for row in full_category if row["category"] != "演唱会"]
+    excluded.extend({
+        **row,
+        "exclusion_reason": f"category excluded from concert-only batch: {row['category']}",
+    } for row in non_concerts)
+    merged = [row for row in full_category if row["category"] == "演唱会"]
+
+    retained_by_source = Counter(row["source_type"] for row in merged)
+    for source_type in stats:
+        stats[source_type]["保留"] = retained_by_source[source_type]
+    review = [
+        {**row, "review_reason": "mixed price tiers include values above 3000 CNY"}
+        for row in merged
+        if price_needs_review(row.get("price_text") or "")
+    ]
+    base_groups = {}
+    for row in merged:
+        base_groups.setdefault(event_base_key(row, row.get("show_time") or ""), []).append(row)
+    for group in base_groups.values():
+        venues = {meaningful_identity(row.get("venue") or "") for row in group}
+        venues.discard("")
+        if len(venues) > 1:
+            review.extend({
+                **row,
+                "review_reason": "same normalized name, city and date but different venues; manual verification required",
+            } for row in group)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
+    with FULL_CATEGORY_OUT.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(full_category)
     with OUT.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=FIELDNAMES)
         writer.writeheader()
         writer.writerows(merged)
 
+    audit_fields = list(dict.fromkeys([*FIELDNAMES, "exclusion_reason", "review_reason"]))
+    for path, records in ((EXCLUDED_OUT, excluded), (REVIEW_OUT, review)):
+        with path.open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=audit_fields, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(records)
+
     # 【答辩讲解】统计：各来源分别贡献多少、票价拆出多少、分类分布
     with_price = sum(1 for r in merged if r["min_price"] != "")
     categories = {}
-    for r in merged:
+    for r in full_category:
         categories[r["category"]] = categories.get(r["category"], 0) + 1
 
     print("===== 演出数据准备完成 =====")
     for k, v in stats.items():
         print(f"  {k:10s} 原始 {v['原始']:6d} → 保留 {v['保留']:6d}")
-    print(f"  合并后总计: {len(merged)}")
+    print(f"  全类别去重后: {len(full_category)} 条 ({FULL_CATEGORY_OUT})")
+    print(f"  正式演唱会批次: {len(merged)} 条")
+    print(f"  排除并留痕: {len(excluded)} 条 ({EXCLUDED_OUT})")
+    print(f"  票价待核验: {len(review)} 条 ({REVIEW_OUT})")
     with_time = sum(1 for r in merged if r["show_time"])
     print(f"  时间归一化成功: {with_time} 条，时间待定(留空待 Spark 剔除): {len(merged) - with_time} 条")
     print(f"  票价拆解成功: {with_price} 条，缺失: {len(merged) - with_price} 条")
