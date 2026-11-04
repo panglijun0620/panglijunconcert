@@ -1,0 +1,240 @@
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+x-hadoop-environment: &hadoop-environment
+  TZ: Asia/Shanghai
+  HADOOP_ROOT_LOGGER: INFO,RFA
+  HADOOP_LOG_MAX_SIZE: "50"
+  HADOOP_LOG_MAX_BACKUP_INDEX: "2"
+  JDBC_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-concert}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true&sslMode=DISABLED
+  MYSQL_USER: ${DB_PUBLISHER_USERNAME:-concert_publisher}
+  MYSQL_PASSWORD: ${DB_PUBLISHER_PASSWORD:?DB_PUBLISHER_PASSWORD must be set}
+
+services:
+  master:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HADOOP_VERSION: "3.3.6"
+        SPARK_VERSION: "3.5.1"
+    image: concert-hadoop-spark:3.3.6-3.5.1
+    hostname: master
+    environment:
+      <<: *hadoop-environment
+      NODE_ROLE: master
+    volumes:
+      - namenode-data:/data/hdfs/namenode
+      - yarn-master-local:/data/yarn/local
+      - ../../spark-jobs/target:/opt/jobs:ro
+      - ../../data:/opt/input:ro
+    ports:
+      - "127.0.0.1:${HDFS_UI_PORT:-9870}:9870"
+      - "127.0.0.1:${YARN_UI_PORT:-8088}:8088"
+      - "127.0.0.1:${JOB_HISTORY_UI_PORT:-19888}:19888"
+    depends_on:
+      db-access-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9870/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus >/dev/null && curl -fsS http://localhost:8088/ws/v1/cluster/info >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+    mem_limit: 3584m
+    cpus: 2.0
+    pids_limit: 2048
+    logging: *bounded-logging
+    networks: [concert-cluster]
+
+  worker-1:
+    image: concert-hadoop-spark:3.3.6-3.5.1
+    hostname: worker-1
+    environment:
+      <<: *hadoop-environment
+      NODE_ROLE: worker
+    volumes:
+      - datanode-1-data:/data/hdfs/datanode
+      - yarn-worker-1-local:/data/yarn/local
+      - yarn-worker-1-logs:/data/yarn/logs
+    ports:
+      - "127.0.0.1:${DATANODE_1_UI_PORT:-9864}:9864"
+      - "127.0.0.1:${NODEMANAGER_1_UI_PORT:-8042}:8042"
+    depends_on:
+      master:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9864/jmx?qry=Hadoop:service=DataNode,name=DataNodeInfo >/dev/null && curl -fsS http://localhost:8042/ws/v1/node/info >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+    mem_limit: 3072m
+    cpus: 3.0
+    pids_limit: 768
+    logging: *bounded-logging
+    networks: [concert-cluster]
+
+  worker-2:
+    image: concert-hadoop-spark:3.3.6-3.5.1
+    hostname: worker-2
+    environment:
+      <<: *hadoop-environment
+      NODE_ROLE: worker
+    volumes:
+      - datanode-2-data:/data/hdfs/datanode
+      - yarn-worker-2-local:/data/yarn/local
+      - yarn-worker-2-logs:/data/yarn/logs
+    ports:
+      - "127.0.0.1:${DATANODE_2_UI_PORT:-9865}:9864"
+      - "127.0.0.1:${NODEMANAGER_2_UI_PORT:-8043}:8042"
+    depends_on:
+      master:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9864/jmx?qry=Hadoop:service=DataNode,name=DataNodeInfo >/dev/null && curl -fsS http://localhost:8042/ws/v1/node/info >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+    mem_limit: 3072m
+    cpus: 3.0
+    pids_limit: 768
+    logging: *bounded-logging
+    networks: [concert-cluster]
+
+  mysql:
+    image: mysql:8.4.0
+    hostname: mysql
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-concert}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      DB_PUBLISHER_USERNAME: ${DB_PUBLISHER_USERNAME:-concert_publisher}
+      DB_PUBLISHER_PASSWORD: ${DB_PUBLISHER_PASSWORD:?DB_PUBLISHER_PASSWORD must be set}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+      - --innodb-buffer-pool-size=768M
+      - --max-connections=120
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT:-13306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+    mem_limit: 1536m
+    cpus: 2.0
+    pids_limit: 512
+    logging: *bounded-logging
+    networks: [concert-cluster]
+
+  db-access-init:
+    image: mysql:8.4.0
+    environment:
+      DB_HOST: 127.0.0.1
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-concert}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      DB_WEB_USERNAME: ${DB_WEB_USERNAME:-concert_web}
+      DB_WEB_PASSWORD: ${DB_WEB_PASSWORD:?DB_WEB_PASSWORD must be set}
+      DB_PUBLISHER_USERNAME: ${DB_PUBLISHER_USERNAME:-concert_publisher}
+      DB_PUBLISHER_PASSWORD: ${DB_PUBLISHER_PASSWORD:?DB_PUBLISHER_PASSWORD must be set}
+      DB_MIGRATION_USERNAME: ${DB_MIGRATION_USERNAME:-concert_migration}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?DB_MIGRATION_PASSWORD must be set}
+    volumes:
+      - ./scripts/configure-db-users.sh:/usr/local/bin/configure-db-users.sh:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/configure-db-users.sh"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    network_mode: "service:mysql"
+    restart: "no"
+    logging: *bounded-logging
+
+  redis:
+    image: redis:7.2.5-alpine
+    hostname: redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 0.5
+    pids_limit: 128
+    logging: *bounded-logging
+    networks: [concert-cluster]
+
+  web:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    image: concert-platform-backend:2.0.0-SNAPSHOT
+    hostname: web
+    volumes:
+      - ./web-healthcheck.sh:/opt/healthcheck.sh:ro
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-concert}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      DB_USERNAME: ${DB_WEB_USERNAME:-concert_web}
+      DB_PASSWORD: ${DB_WEB_PASSWORD:?DB_WEB_PASSWORD must be set}
+      DB_MIGRATION_USERNAME: ${DB_MIGRATION_USERNAME:-concert_migration}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?DB_MIGRATION_PASSWORD must be set}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      ADMIN_API_ENABLED: ${ADMIN_API_ENABLED:-false}
+    ports:
+      - "0.0.0.0:${WEB_PORT:-8080}:8080"
+    depends_on:
+      db-access-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/bin/bash", "/opt/healthcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+    restart: unless-stopped
+    mem_limit: 1536m
+    cpus: 2.0
+    pids_limit: 384
+    logging: *bounded-logging
+    networks: [concert-cluster]
+
+networks:
+  concert-cluster:
+    name: concert-cluster
+
+volumes:
+  namenode-data:
+  datanode-1-data:
+  datanode-2-data:
+  yarn-master-local:
+  yarn-worker-1-local:
+  yarn-worker-1-logs:
+  yarn-worker-2-local:
+  yarn-worker-2-logs:
+  mysql-data:
+  redis-data:
