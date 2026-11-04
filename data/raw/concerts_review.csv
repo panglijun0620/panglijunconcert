@@ -1,0 +1,2 @@
+artist_name,concert_name,city,venue,show_time,show_time_precision,price_text,sale_status,source_type,source_url,collected_at,min_price,max_price,category,exclusion_reason,review_reason
+SYEAM,魔代AI电音节,北京,海淀二河开21号艺术区露天音乐广场,2026-09-12 16:30,DATETIME,128 / 158 / 198 / 5555 / 6666 / 8888 / 9999,待定,showstart,https://www.showstart.com/event/305179,2026-08-31,,,演唱会,,mixed price tiers include values above 3000 CNY

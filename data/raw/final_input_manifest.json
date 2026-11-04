@@ -1,0 +1,40 @@
+{
+  "files": {
+    "concerts": {
+      "path": "data\\raw\\concerts_upload.csv",
+      "sha256": "4cc9b5ddfa12862befc5f32d025dfbbea5da357b786d12727cc32fa3bb82189e"
+    },
+    "comments": {
+      "path": "data\\raw\\comments_upload.csv",
+      "sha256": "875e11d9c9251a8dda08f7f859d9c763d7b4010a1eb4df8a74c368afca5c36ca"
+    }
+  },
+  "concerts": {
+    "input": 1114,
+    "accepted": 1114,
+    "duplicates": 0,
+    "sources": {
+      "piaoniu": 957,
+      "public": 53,
+      "showstart": 104
+    }
+  },
+  "comments": {
+    "input": 416530,
+    "accepted": 167844,
+    "duplicates": 248686,
+    "conflicting_records": 0,
+    "conflicting_rows": 0,
+    "conflicting_record_ids": [],
+    "artist_scoped": 109728,
+    "sources": {
+      "damai": 416530
+    }
+  },
+  "totals": {
+    "input": 417644,
+    "accepted": 168958,
+    "duplicates": 248686,
+    "conflicting_records": 0
+  }
+}
