@@ -1,0 +1,15 @@
+source_record_id,artist_name,category,concert_name,city,venue,show_time,source_type,source_url,collected_at
+class-classical-band,贝拉拉室内乐团,演唱会,卡农与梁祝经典音乐会,Fixture City,Test Hall,2026-11-01,piaoniu,https://www.piaoniu.com/activity/class-classical-band
+class-orchestra,维也纳宫廷圆舞曲交响乐团,演唱会,维也纳宫廷圆舞曲交响乐团2027新年音乐会,Fixture City,Test Hall,2026-11-02,piaoniu,https://www.piaoniu.com/activity/class-orchestra
+class-orchestra-after,维也纳宫廷圆舞曲交响乐团,演唱会,维也纳之声新年音乐会 维也纳宫廷圆舞曲交响乐团巡演,Fixture City,Test Hall,2026-11-02,piaoniu,https://www.piaoniu.com/activity/class-orchestra-after
+class-piano,马克西姆,演唱会,马克西姆古典跨界钢琴演奏会,Fixture City,Test Hall,2026-11-03,piaoniu,https://www.piaoniu.com/activity/class-piano
+class-guqin,武怀琛,演唱会,武怀琛古琴专场演奏会,Fixture City,Test Hall,2026-11-04,piaoniu,https://www.piaoniu.com/activity/class-guqin
+class-opera,青岛京剧院,演唱会,京剧《清音原声演唱会》,Fixture City,Test Hall,2026-11-05,piaoniu,https://www.piaoniu.com/activity/class-opera
+class-kunqu,北方昆曲剧院,演唱会,北方昆曲剧院迎国庆昆曲演唱会,Fixture City,Test Hall,2026-11-06,piaoniu,https://www.piaoniu.com/activity/class-kunqu
+class-standup,林盛斌,演唱会,林盛斌世界巡回栋笃笑,Fixture City,Test Hall,2026-11-07,piaoniu,https://www.piaoniu.com/activity/class-standup
+class-comedy,黄俊英,演唱会,黄俊英相声小品跨年演唱会,Fixture City,Test Hall,2026-11-08,piaoniu,https://www.piaoniu.com/activity/class-comedy
+class-singer,周杰伦,演唱会,周杰伦世界巡回演唱会,Fixture City,Test Hall,2026-11-09,piaoniu,https://www.piaoniu.com/activity/class-singer
+class-livehouse,独立乐队,演唱会,独立乐队全国巡演 Livehouse,Fixture City,Test Hall,2026-11-10,piaoniu,https://www.piaoniu.com/activity/class-livehouse
+class-musical-songs,剧场歌手,演唱会,经典音乐剧片段演唱会,Fixture City,Test Hall,2026-11-11,piaoniu,https://www.piaoniu.com/activity/class-musical-songs
+class-symphonic-pop,流行歌手,演唱会,流行金曲交响演唱会,Fixture City,Test Hall,2026-11-12,piaoniu,https://www.piaoniu.com/activity/class-symphonic-pop
+class-unverified,以详情为准,演唱会,梁祝国风经典名曲音乐会,Fixture City,Test Hall,2026-11-13,piaoniu,https://www.piaoniu.com/activity/class-unverified

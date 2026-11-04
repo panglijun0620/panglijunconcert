@@ -1,0 +1,7 @@
+source_record_id,concert_source_record_id,artist_name,concert_name,comment_text,comment_time,like_count,user_region,source_platform,source_url,collected_at,sentiment_score,sentiment_scale
+m-1,,,,bad sound and terrible service,2026-10-02 10:00:00,3,Shanghai,damai,https://m.damai.cn/item/c-1,2026-10-02,-0.8,-1-1
+m-2,,,,excellent performance,2026/9/5 18:54,5,Shanghai,damai,https://m.damai.cn/item/c-1,2026-10-02,0.8,-1-1
+n-1,,Alice,,disappointing song,,8,Jiangsu,other,https://example.invalid/comment/1,2026-10-03,0.0,0-1
+b-1,,Bob,Bob Tour,bad video sound,,2,Beijing,other,https://example.invalid/comment/2,2026-10-03,,
+b-1,,Bob,Bob Tour,bad video sound,,2,Beijing,other,https://example.invalid/comment/2,2026-10-03,,
+invalid,,,, ,,,Unknown,unknown,,2026-10-03,,

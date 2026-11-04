@@ -1,0 +1,7 @@
+source_record_id,artist_name,category,concert_name,city,venue,show_time,price_text,min_price,max_price,sale_status,source_type,source_url,collected_at
+c-1,Alice,concert,Alice Live,Shanghai,Arena,2026-10-01 19:30:00,280-880,280,880,on_sale,piaoniu,https://www.piaoniu.com/activity/c-1,2026-09-20 10:00:00
+c-2,Bob,concert,Bob Tour,Beijing,Stadium,2026-11-02,399-1299,,,on_sale,showstart,https://wap.showstart.com/event/c-2,2026-09-20
+c-2,Bob,concert,Bob Tour,Beijing,Stadium,2026-11-02,399-1299,,,on_sale,showstart,https://wap.showstart.com/event/c-2,2026-09-20
+c-3,Nobody,concert,Invalid Date,Shenzhen,Hall,not-a-date,100,100,100,on_sale,piaoniu,https://www.piaoniu.com/activity/c-3,2026-09-20
+c-4,Clone,concert,Alice Live,Shanghai,Second Arena,2026-10-03 19:30:00.000000,180-580,180,580,on_sale,piaoniu,https://www.piaoniu.com/activity/c-4,2026-09-20 10:00:00.000000
+stage-1,Stage Group,音乐会,Non-concert stage play,Shanghai,Theatre,2026-10-04 19:30:00,120-320,120,320,on_sale,piaoniu,https://www.piaoniu.com/activity/stage-1,2026-09-20 10:00:00
