@@ -103,6 +103,13 @@ class AnalyticsPipelineTest {
                 .first();
         assertEquals(3L, damaiCoverage.getLong(0));
         assertFalse(result.risks().collectAsList().isEmpty());
+        assertEquals(0, result.risks()
+                .filter(col("triggered").and(col("risk_level").equalTo("NONE")))
+                .count());
+        assertEquals(0, result.risks()
+                .filter(col("risk_level").equalTo("WATCH")
+                        .and(col("negative_ratio").geq(0.40)))
+                .count());
 
         HdfsOutputWriter writer = new HdfsOutputWriter();
         writer.write(result, options);
@@ -297,7 +304,8 @@ class AnalyticsPipelineTest {
             "--output-root", output.toUri().toString(),
             "--master", "local[2]",
             "--risk-min-samples", "1",
-            "--risk-negative-ratio", "0.40"
+            "--risk-watch-ratio", "0.20",
+            "--risk-alert-ratio", "0.40"
         }, Map.of());
     }
 

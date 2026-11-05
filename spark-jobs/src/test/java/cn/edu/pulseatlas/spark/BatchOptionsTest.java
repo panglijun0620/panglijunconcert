@@ -21,6 +21,8 @@ class BatchOptionsTest {
 
         assertEquals("secret-from-environment", options.jdbcPassword());
         assertEquals(20, options.riskMinSamples());
+        assertEquals(0.20, options.riskWatchRatio());
+        assertEquals(0.40, options.riskAlertRatio());
         assertEquals(0.40, options.riskNegativeRatio());
     }
 
@@ -36,6 +38,17 @@ class BatchOptionsTest {
             "--batch-id", "a".repeat(81),
             "--concert-input", "concerts.csv",
             "--comment-input", "comments.csv"
+        }, Map.of()));
+    }
+
+    @Test
+    void rejectsWatchRatioAboveAlertRatio() {
+        assertThrows(IllegalArgumentException.class, () -> BatchOptions.parse(new String[] {
+            "--batch-id", "fixture-1",
+            "--concert-input", "concerts.csv",
+            "--comment-input", "comments.csv",
+            "--risk-watch-ratio", "0.50",
+            "--risk-alert-ratio", "0.40"
         }, Map.of()));
     }
 }

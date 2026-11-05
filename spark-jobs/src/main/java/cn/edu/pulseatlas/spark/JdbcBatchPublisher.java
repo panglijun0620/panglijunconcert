@@ -397,9 +397,9 @@ public final class JdbcBatchPublisher {
         String sql = """
                 INSERT INTO sentiment_risk
                     (data_batch_id, scope_type, scope_id, object_name, negative_ratio,
-                     primary_negative_topic, sample_size, threshold_value, minimum_sample_size,
+                     risk_level, primary_negative_topic, sample_size, threshold_value, minimum_sample_size,
                      trigger_rule, detected_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int pending = 0;
@@ -411,12 +411,13 @@ public final class JdbcBatchPublisher {
                 nullableString(statement, 3, truncate(string(row, "scope_id"), 160));
                 statement.setString(4, truncate(string(row, "object_name"), 240));
                 decimal(statement, 5, row, "negative_ratio");
-                statement.setString(6, truncate(string(row, "primary_negative_topic"), 120));
-                statement.setLong(7, longValue(row, "sample_size"));
-                decimal(statement, 8, row, "threshold_value");
-                statement.setLong(9, longValue(row, "minimum_sample_size"));
-                statement.setString(10, truncate(string(row, "trigger_rule"), 500));
-                statement.setTimestamp(11, timestamp(row, "detected_at"));
+                statement.setString(6, truncate(string(row, "risk_level"), 16));
+                statement.setString(7, truncate(string(row, "primary_negative_topic"), 120));
+                statement.setLong(8, longValue(row, "sample_size"));
+                decimal(statement, 9, row, "threshold_value");
+                statement.setLong(10, longValue(row, "minimum_sample_size"));
+                statement.setString(11, truncate(string(row, "trigger_rule"), 500));
+                statement.setTimestamp(12, timestamp(row, "detected_at"));
                 statement.addBatch();
                 if (++pending % JDBC_BATCH_SIZE == 0) {
                     statement.executeBatch();

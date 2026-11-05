@@ -674,8 +674,8 @@ public final class AnalyticsPipeline {
 
     private Dataset<Row> buildRisks(Dataset<Row> comments) {
         // 【答辩讲解】舆情风险：找出负面评价集中的已验证艺人范围或平台范围。
-        // 判定规则有两条同时满足才算风险：平均情感 ≤ -0.2，且负面评论占比 ≥ 阈值，
-        // 而且样本数要够（riskMinSamples），否则两条差评就说"有风险"太草率。
+        // 单条评论的情感分 ≤ -0.2 时计为负面；样本量达标后，负面占比达到 20% 且不足 40% 为关注，
+        // 达到 40% 为重点预警。平均情感分只作为辅助展示，不参与风险级别判定。
         Dataset<Row> scoped = comments.filter(
                         col("scope_key").isNotNull().and(col("sentiment_score").isNotNull()))
                 .select(
@@ -714,23 +714,37 @@ public final class AnalyticsPipeline {
                         .and(aggregates.col("source_type").equalTo(mainTopics.col("_topic_source_type"))),
                 "left");
 
-        return risks.select(
+        Dataset<Row> classified = risks.withColumn(
+                "risk_level",
+                when(col("sample_size").lt(options.riskMinSamples())
+                                .or(col("negative_ratio").lt(options.riskWatchRatio())),
+                        lit("NONE"))
+                        .when(col("negative_ratio").geq(options.riskAlertRatio()), lit("ALERT"))
+                        .otherwise(lit("WATCH")));
+
+        return classified.select(
                 lit(options.batchId()).alias("batch_id"),
-                aggregates.col("scope_type"),
-                aggregates.col("scope_key").alias("scope_id"),
-                aggregates.col("scope_label").alias("object_name"),
-                aggregates.col("source_type"),
+                col("scope_type"),
+                col("scope_key").alias("scope_id"),
+                col("scope_label").alias("object_name"),
+                col("source_type"),
                 col("negative_ratio"),
                 col("average_sentiment"),
                 coalesce(col("primary_negative_topic"), lit("none")).alias("primary_negative_topic"),
                 col("sample_size"),
                 lit(NEGATIVE_THRESHOLD).alias("threshold_value"),
                 lit(options.riskMinSamples()).cast("long").alias("minimum_sample_size"),
-                lit("sentiment <= -0.2 and negative ratio >= " + options.riskNegativeRatio())
+                col("risk_level"),
+                when(col("risk_level").equalTo("ALERT"),
+                        lit("negative comment score <= -0.2; negative ratio >= "
+                                + options.riskAlertRatio()))
+                        .when(col("risk_level").equalTo("WATCH"),
+                                lit("negative comment score <= -0.2; negative ratio >= "
+                                        + options.riskWatchRatio() + " and < "
+                                        + options.riskAlertRatio()))
+                        .otherwise(lit("not triggered"))
                         .alias("trigger_rule"),
-                col("sample_size").geq(options.riskMinSamples())
-                        .and(col("negative_ratio").geq(options.riskNegativeRatio()))
-                        .alias("triggered"),
+                col("risk_level").notEqual("NONE").alias("triggered"),
                 current_timestamp().alias("detected_at"));
     }
 

@@ -92,6 +92,6 @@ public final class ConcertBatchJob {
                 + "--comment-input PATH[,PATH...] "
                 + "[--output-root hdfs:///concert] [--master local[2]] "
                 + "[--jdbc-url URL --jdbc-user USER --jdbc-password-env MYSQL_PASSWORD] "
-                + "[--risk-min-samples 20 --risk-negative-ratio 0.40]";
+                + "[--risk-min-samples 20 --risk-watch-ratio 0.20 --risk-alert-ratio 0.40]";
     }
 }

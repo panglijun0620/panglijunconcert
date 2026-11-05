@@ -15,7 +15,8 @@ public record BatchOptions(
         String jdbcUser,
         String jdbcPassword,
         int riskMinSamples,
-        double riskNegativeRatio) {
+        double riskWatchRatio,
+        double riskAlertRatio) {
 
     private static final Pattern BATCH_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,79}");
 
@@ -48,13 +49,23 @@ public record BatchOptions(
         }
 
         int minimumSamples = parseInt(values.getOrDefault("risk-min-samples", "20"), "risk-min-samples");
-        double negativeRatio = parseDouble(
-                values.getOrDefault("risk-negative-ratio", "0.40"), "risk-negative-ratio");
+        double watchRatio = parseDouble(
+                values.getOrDefault("risk-watch-ratio", "0.20"), "risk-watch-ratio");
+        double alertRatio = parseDouble(
+                values.getOrDefault("risk-alert-ratio",
+                        values.getOrDefault("risk-negative-ratio", "0.40")),
+                "risk-alert-ratio");
         if (minimumSamples < 1) {
             throw new IllegalArgumentException("risk-min-samples must be at least 1");
         }
-        if (negativeRatio < 0.0 || negativeRatio > 1.0) {
-            throw new IllegalArgumentException("risk-negative-ratio must be between 0 and 1");
+        if (watchRatio < 0.0 || watchRatio > 1.0) {
+            throw new IllegalArgumentException("risk-watch-ratio must be between 0 and 1");
+        }
+        if (alertRatio < 0.0 || alertRatio > 1.0) {
+            throw new IllegalArgumentException("risk-alert-ratio must be between 0 and 1");
+        }
+        if (watchRatio > alertRatio) {
+            throw new IllegalArgumentException("risk-watch-ratio must not exceed risk-alert-ratio");
         }
 
         return new BatchOptions(
@@ -67,7 +78,13 @@ public record BatchOptions(
                 jdbcUser,
                 jdbcPassword,
                 minimumSamples,
-                negativeRatio);
+                watchRatio,
+                alertRatio);
+    }
+
+    /** Compatibility accessor for callers still using the original single-threshold name. */
+    public double riskNegativeRatio() {
+        return riskAlertRatio;
     }
 
     public boolean jdbcEnabled() {
