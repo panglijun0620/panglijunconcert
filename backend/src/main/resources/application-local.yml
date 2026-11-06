@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:./data/concert-analytics;MODE=MySQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.h2.Driver
+  flyway:
+    locations: classpath:db/migration
+  cache:
+    type: ${CACHE_TYPE:simple}
+  h2:
+    console:
+      enabled: ${H2_CONSOLE_ENABLED:false}

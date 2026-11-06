@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f8f6">
+    <meta name="color-scheme" content="light dark">
+    <meta name="description" content="PULSE ATLAS 演唱会数据分析与可视化系统">
+    <title>PULSE ATLAS / 演唱会数据分析看板</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" th:href="@{/assets/favicon.svg}">
+    <script>try { if (localStorage.getItem('app-shell-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (_) {}</script>
+    <link rel="stylesheet" href="/css/app.css" th:href="@{/css/app.css}">
+    <script defer src="/js/vendor/lucide.js" th:src="@{/js/vendor/lucide.js}"></script>
+    <script defer src="/js/vendor/echarts.min.js" th:src="@{/js/vendor/echarts.min.js}"></script>
+    <script defer src="/js/app.js" th:src="@{/js/app.js}"></script>
+</head>
+<body>
+<a class="skip-link" href="#main-content">跳到主要内容</a>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="app-frame" id="app-shell">
+    <aside class="side-rail" id="sidebar" aria-label="主导航">
+        <div class="rail-brand-row">
+            <a class="brand-mark" href="#overview" aria-label="PULSE ATLAS 首页">
+                <span class="brand-dot"></span><span class="brand-word">PULSE<br><b>ATLAS</b></span>
+            </a>
+            <button class="rail-close" type="button" data-sidebar-close aria-label="关闭导航"><i data-lucide="x"></i></button>
+        </div>
+        <nav class="rail-nav">
+            <a class="rail-link is-active" href="#overview" data-route-link="overview" aria-current="page"><i data-lucide="scan-line"></i><span>概览</span></a>
+            <a class="rail-link" href="#concerts" data-route-link="concerts"><i data-lucide="calendar-days"></i><span>项目</span></a>
+            <a class="rail-link" href="#market" data-route-link="market"><i data-lucide="chart-no-axes-combined"></i><span>市场</span></a>
+            <a class="rail-link" href="#sentiment" data-route-link="sentiment"><i data-lucide="activity"></i><span>舆情</span><span class="rail-badge" id="risk-nav-count" hidden>0</span></a>
+            <a class="rail-link" href="#recommendations" data-route-link="recommendations"><i data-lucide="sparkles"></i><span>推荐</span></a>
+            <a class="rail-link" href="#data" data-route-link="data"><i data-lucide="database-zap"></i><span>数据</span></a>
+        </nav>
+        <div class="rail-footer">
+            <div class="rail-health" id="service-status" role="status" aria-live="polite"><span class="status-dot is-loading"></span><span><strong>检测中</strong><small>Spring Boot</small></span></div>
+            <span class="rail-version" id="dataset-version">V.-- / --</span>
+        </div>
+    </aside>
+    <button class="sidebar-scrim" type="button" data-sidebar-close aria-label="关闭导航" tabindex="-1"></button>
+
+    <div class="main-stage">
+        <header class="top-bar">
+            <div class="mobile-brand"><span class="brand-dot"></span><b>PULSE / ATLAS</b></div>
+            <div class="top-meta"><span class="signal-pip"></span><span id="route-title">首页概览</span><span class="meta-divider"></span><span id="sync-note">尚未同步</span></div>
+            <div class="top-actions">
+                <button class="icon-button mobile-menu-trigger" type="button" data-sidebar-open aria-label="打开导航" title="打开导航"><i data-lucide="menu"></i></button>
+                <button class="text-button" type="button" data-global-search-open aria-label="搜索全部演出项目"><i data-lucide="search"></i><span>全局搜索</span></button>
+                <button class="icon-button" type="button" data-theme-toggle aria-label="切换到深色主题" title="切换到深色主题"><i data-lucide="moon"></i></button>
+                <button class="icon-button" type="button" data-refresh-view aria-label="刷新当前视图" title="刷新当前视图"><i data-lucide="refresh-cw"></i></button>
+            </div>
+        </header>
+
+        <main id="main-content" tabindex="-1">
+            <section class="view is-active" id="view-overview" data-view="overview" aria-labelledby="overview-title">
+                <section class="hero-grid">
+                    <div class="hero-copy">
+                        <div class="eyebrow"><span class="eyebrow-line"></span>演唱会数据分析</div>
+                        <h1 id="overview-title">演唱会<br><em>数据分析看板</em></h1>
+                        <p class="hero-lede">集中查看演出项目记录、城市分布、票价和大麦评论聚合数据。</p>
+                        <div class="hero-actions"><a class="btn btn-primary" href="#market"><span>查看分析</span><i data-lucide="arrow-down-right"></i></a><a class="btn btn-ghost" href="#concerts"><span>浏览项目</span><i data-lucide="calendar-search"></i></a></div>
+                    </div>
+                    <div class="hero-instrument" aria-label="数据状态">
+                        <div class="instrument-head"><span>数据状态</span><span>查询<span class="blink">_</span></span></div>
+                        <div class="instrument-center"><strong id="hero-index">--</strong><span>情绪指数</span></div>
+                        <div class="instrument-ring ring-one"></div><div class="instrument-ring ring-two"></div>
+                        <div class="instrument-cross cross-a"></div><div class="instrument-cross cross-b"></div><div class="instrument-axis axis-x"></div><div class="instrument-axis axis-y"></div>
+                        <div class="instrument-label label-a">城市</div><div class="instrument-label label-b">评论</div>
+                        <div class="instrument-foot"><span>当前发布批次</span><span class="status-tag">已同步</span></div>
+                    </div>
+                </section>
+
+                <div class="metric-grid" id="overview-metrics" aria-busy="true">
+                    <article class="metric-card metric-featured"><div class="metric-label"><i data-lucide="ticket"></i><span>演出项目记录</span></div><strong data-metric="concerts">--</strong><span class="metric-note">去重后的项目级记录</span><span class="metric-index">01</span></article>
+                    <article class="metric-card"><div class="metric-label"><i data-lucide="messages-square"></i><span>大麦评论</span></div><strong data-metric="comments">--</strong><span class="metric-note">大麦平台评论样本</span><span class="metric-index">02</span></article>
+                    <article class="metric-card"><div class="metric-label"><i data-lucide="map-pinned"></i><span>覆盖城市</span></div><strong data-metric="cities">--</strong><span class="metric-note">演出城市</span><span class="metric-index">03</span></article>
+                    <article class="metric-card metric-accent"><div class="metric-label"><i data-lucide="triangle-alert"></i><span>预警与关注</span></div><strong data-metric="risks">--</strong><span class="metric-note">40% 预警 / 20% 关注</span><span class="metric-index">04</span></article>
+                </div>
+                <div class="view-alert" data-view-alert="dashboard" hidden></div>
+                <div class="section-heading"><div><span class="eyebrow"><span class="eyebrow-line"></span>当前数据</span><h2>趋势与<em>风险</em></h2></div><p>查看发布批次的月度项目记录变化与历史舆情风险。</p></div>
+                <div class="overview-grid">
+                    <article class="chart-panel chart-large">
+                        <div class="panel-head"><div><span class="panel-kicker">市场走势</span><h3>月度项目记录趋势</h3></div><button class="table-action" type="button" data-chart-table="overview-trend" aria-pressed="false" aria-label="切换为数据表"><i data-lucide="table-2"></i></button></div>
+                        <div class="chart-shell"><div class="chart chart-trend" id="overview-trend-chart" data-chart="overview-trend" role="img" aria-label="月度演出项目记录趋势图"></div><div class="chart-table" id="overview-trend-table" data-chart-table-view="overview-trend" hidden></div><div class="chart-state is-loading" data-chart-state="overview-trend" role="status"><span class="spinner"></span><span>正在读取趋势数据</span></div></div>
+                        <p class="chart-summary" id="overview-trend-summary">趋势摘要将在数据加载后显示。</p>
+                    </article>
+                    <article class="chart-panel risk-panel">
+                        <div class="panel-head"><div><span class="panel-kicker">历史舆情</span><h3>风险摘要</h3></div><a class="table-action" href="#sentiment" aria-label="查看全部风险"><i data-lucide="arrow-up-right"></i></a></div>
+                        <div class="risk-list" id="overview-risk-list" aria-live="polite" aria-busy="true"><div class="loading-block"><span class="spinner"></span>正在读取风险</div></div>
+                        <div class="batch-summary" id="overview-batch"><span>最近批次</span><strong>--</strong><small>等待数据</small></div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="view" id="view-concerts" data-view="concerts" aria-labelledby="concerts-title" hidden>
+                <div class="route-hero"><div><span class="eyebrow"><span class="eyebrow-line"></span>项目索引</span><h1 id="concerts-title">演唱会<br><em>查询</em></h1></div><div class="route-side"><p>筛选演出项目记录并浏览日期、票价和来源信息。</p><div class="mode-switch"><button class="is-active" type="button" data-concert-mode="list" aria-pressed="true"><i data-lucide="list"></i><span>列表</span></button><button type="button" data-concert-mode="calendar" aria-pressed="false"><i data-lucide="calendar-days"></i><span>日历</span></button></div></div></div>
+                <form class="filter-strip route-filter" id="concert-filter-form">
+                    <div class="filter-title"><span class="filter-number">/</span><span>筛选条件</span></div>
+                    <div class="filter-form"><label class="field search-wide"><span>关键词</span><input type="search" name="q" placeholder="艺人 / 项目 / 场馆" autocomplete="off"></label><label class="field"><span>城市</span><select name="city"><option value="">全部城市</option></select><i data-lucide="chevron-down"></i></label><label class="field"><span>状态</span><select name="status"><option value="">全部状态</option></select><i data-lucide="chevron-down"></i></label><button class="filter-submit" type="submit" aria-label="查询"><i data-lucide="arrow-up-right"></i></button><button class="filter-reset" type="reset" aria-label="重置"><i data-lucide="rotate-ccw"></i></button><button class="filter-more" type="button" data-filter-toggle aria-expanded="false" aria-controls="concert-advanced-filters"><i data-lucide="sliders-horizontal"></i><span>更多</span></button><div class="advanced-filters" id="concert-advanced-filters" hidden><label class="field"><span>艺人</span><select name="artist"><option value="">全部艺人</option></select><i data-lucide="chevron-down"></i></label><label class="field"><span>分类</span><select name="category"><option value="">全部分类</option></select><i data-lucide="chevron-down"></i></label><label class="field"><span>开始日期</span><input type="date" name="startDate"></label><label class="field"><span>结束日期</span><input type="date" name="endDate"></label><label class="field"><span>最低票价</span><input type="number" name="minPrice" min="0" step="1" placeholder="不限"></label><label class="field"><span>最高票价</span><input type="number" name="maxPrice" min="0" step="1" placeholder="不限"></label></div></div>
+                </form>
+                <div class="view-alert" data-view-alert="concerts" hidden></div>
+                <section class="results-panel" data-concert-view="list" aria-label="演唱会查询结果"><div class="results-meta"><p><strong id="concert-result-count">--</strong> 条结果</p><span id="concert-filter-summary">全部演出项目</span></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>演出项目</th><th>城市 / 场馆</th><th>演出日期</th><th>票价</th><th>状态</th><th><span class="sr-only">操作</span></th></tr></thead><tbody id="concert-table-body"><tr><td colspan="6"><div class="table-state"><span class="spinner"></span>正在读取演出项目</div></td></tr></tbody></table></div><div class="pagination" aria-label="演唱会分页"><button class="table-action" type="button" data-concert-page="prev" aria-label="上一页" disabled><i data-lucide="chevron-left"></i></button><span id="concert-page-label">第 1 页</span><button class="table-action" type="button" data-concert-page="next" aria-label="下一页" disabled><i data-lucide="chevron-right"></i></button></div></section>
+                <section class="calendar-panel" data-concert-view="calendar" aria-label="演唱会日历" hidden><div class="calendar-head"><button class="table-action" type="button" data-calendar="prev" aria-label="上个月"><i data-lucide="chevron-left"></i></button><h2 id="calendar-title">演出日历</h2><button class="table-action" type="button" data-calendar="next" aria-label="下个月"><i data-lucide="chevron-right"></i></button></div><div class="calendar-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="concert-calendar" id="concert-calendar"></div></section>
+            </section>
+
+            <section class="view" id="view-market" data-view="market" aria-labelledby="market-title" hidden>
+                <div class="route-hero compact"><div><span class="eyebrow"><span class="eyebrow-line"></span>市场信号</span><h1 id="market-title">市场<br><em>分析</em></h1></div><p>当前发布批次的城市、时间、价格、艺人与场馆聚合。</p></div>
+                <div class="analysis-tabs" role="tablist" aria-label="市场分析维度"><button class="is-active" type="button" role="tab" aria-selected="true" data-market-tab="city">城市市场</button><button type="button" role="tab" aria-selected="false" data-market-tab="trend">时间趋势</button><button type="button" role="tab" aria-selected="false" data-market-tab="price">价格结构</button><button type="button" role="tab" aria-selected="false" data-market-tab="artist">艺人与场馆</button></div>
+                <div class="view-alert" data-view-alert="market" hidden></div>
+                <div class="analysis-grid"><article class="chart-panel"><div class="panel-head"><div><span class="panel-kicker" id="market-primary-kicker">项目规模</span><h3 id="market-primary-title">城市演出项目</h3></div><button class="table-action" type="button" data-chart-table="market-primary" aria-pressed="false" aria-label="切换为数据表"><i data-lucide="table-2"></i></button></div><div class="chart-shell"><div class="chart" id="market-primary-chart" data-chart="market-primary" role="img" aria-label="市场主分析图"></div><div class="chart-table" id="market-primary-table" data-chart-table-view="market-primary" hidden></div><div class="chart-state is-loading" data-chart-state="market-primary"><span class="spinner"></span><span>正在读取市场数据</span></div></div><p class="chart-summary" id="market-primary-summary"></p></article><article class="chart-panel"><div class="panel-head"><div><span class="panel-kicker" id="market-secondary-kicker">票价水平</span><h3 id="market-secondary-title">城市平均票价</h3></div><button class="table-action" type="button" data-chart-table="market-secondary" aria-pressed="false" aria-label="切换为数据表"><i data-lucide="table-2"></i></button></div><div class="chart-shell"><div class="chart" id="market-secondary-chart" data-chart="market-secondary" role="img" aria-label="市场辅助分析图"></div><div class="chart-table" id="market-secondary-table" data-chart-table-view="market-secondary" hidden></div><div class="chart-state is-loading" data-chart-state="market-secondary"><span class="spinner"></span><span>正在读取市场数据</span></div></div><p class="chart-summary" id="market-secondary-summary"></p></article></div>
+            </section>
+
+            <section class="view" id="view-sentiment" data-view="sentiment" aria-labelledby="sentiment-title" hidden>
+                <div class="route-hero compact"><div><span class="eyebrow"><span class="eyebrow-line"></span>评论信号</span><h1 id="sentiment-title">舆情<br><em>监测</em></h1></div><p>仅基于大麦评论，按平台、用户地区、主题和可验证艺人范围做词典规则分析；不代表多平台舆情，也不关联具体演出场次。</p></div>
+                <form class="filter-strip compact-filter" id="sentiment-filter-form"><div class="filter-title"><span class="filter-number">/</span><span>样本筛选</span></div><div class="filter-form"><label class="field"><span>地区</span><select name="region"><option value="">全部地区</option></select><i data-lucide="chevron-down"></i></label><label class="field"><span>平台</span><select name="platform"><option value="">全部平台</option></select><i data-lucide="chevron-down"></i></label><button class="filter-submit" type="submit" aria-label="筛选"><i data-lucide="arrow-up-right"></i></button></div></form>
+                <div class="sentiment-stat-row"><div><span>已判定样本</span><strong id="sentiment-samples">--</strong><small id="sentiment-coverage">规则覆盖率 --</small></div><div><span>平均情感分</span><strong id="sentiment-average">--</strong><small>-1 至 1</small></div><div><span>重点 / 关注</span><strong id="sentiment-risks">--</strong><small>≥40% / 20%–&lt;40%</small></div></div>
+                <div class="view-alert" data-view-alert="sentiment" hidden></div>
+                <div class="sentiment-grid"><article class="chart-panel"><div class="panel-head"><div><span class="panel-kicker">大麦评论样本</span><h3 id="sentiment-chart-title">情感五档分布</h3></div><div class="panel-actions"><div class="mini-tabs" role="tablist" aria-label="舆情图表维度"><button class="is-active" type="button" role="tab" aria-selected="true" data-sentiment-tab="distribution">情感</button><button type="button" role="tab" aria-selected="false" data-sentiment-tab="topics">主题</button><button type="button" role="tab" aria-selected="false" data-sentiment-tab="platforms">来源</button></div><button class="table-action" type="button" data-chart-table="sentiment-main" aria-pressed="false" aria-label="切换为数据表"><i data-lucide="table-2"></i></button></div></div><div class="chart-shell"><div class="chart" id="sentiment-main-chart" data-chart="sentiment-main" role="img" aria-label="大麦评论规则分析图"></div><div class="chart-table" id="sentiment-main-table" data-chart-table-view="sentiment-main" hidden></div><div class="chart-state is-loading" data-chart-state="sentiment-main"><span class="spinner"></span><span>正在读取舆情数据</span></div></div><p class="chart-summary" id="sentiment-main-summary"></p></article><article class="chart-panel risk-table-panel"><div class="panel-head"><div><span class="panel-kicker">两级规则</span><h3>舆情预警与关注</h3></div><span class="status-tag">分级识别</span></div><div class="risk-list" id="sentiment-risk-list"><div class="table-state"><span class="spinner"></span>正在读取风险记录</div></div><p class="chart-summary">负面占比达到 40% 标记为重点预警，达到 20% 且不足 40% 标记为关注观察；两级均要求至少 20 条有效样本。</p></article></div>
+                <div class="analysis-grid">
+                    <article class="chart-panel">
+                        <div class="panel-head"><div><span class="panel-kicker">话题拆解</span><h3>各主题负面率</h3></div><span class="status-tag">动态计算</span></div>
+                        <div class="chart-shell">
+                            <div class="chart" id="topic-risk-chart" data-chart="topic-risk" role="img" aria-label="各主题负面率"></div>
+                            <div class="chart-table" id="topic-risk-table" data-chart-table-view="topic-risk" hidden></div>
+                            <div class="chart-state is-loading" data-chart-state="topic-risk"><span class="spinner"></span><span>正在读取主题数据</span></div>
+                        </div>
+                        <p class="chart-summary" id="topic-risk-summary"></p>
+                    </article>
+                    <article class="chart-panel">
+                        <div class="panel-head"><div><span class="panel-kicker">地域分布</span><h3>负面集中的地区</h3></div><span class="status-tag">需关注</span></div>
+                        <div class="chart-shell">
+                            <div class="chart" id="region-risk-chart" data-chart="region-risk" role="img" aria-label="负面集中的地区"></div>
+                            <div class="chart-table" id="region-risk-table" data-chart-table-view="region-risk" hidden></div>
+                            <div class="chart-state is-loading" data-chart-state="region-risk"><span class="spinner"></span><span>正在读取地区数据</span></div>
+                        </div>
+                        <p class="chart-summary" id="region-risk-summary"></p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="view" id="view-recommendations" data-view="recommendations" aria-labelledby="recommendations-title" hidden>
+                <div class="route-hero compact"><div><span class="eyebrow"><span class="eyebrow-line"></span>规则排序</span><h1 id="recommendations-title">演唱会<br><em>推荐</em></h1></div><p>按城市、预算和艺人偏好生成可解释推荐。</p></div>
+                <form class="filter-strip compact-filter" id="recommendation-form"><div class="filter-title"><span class="filter-number">/</span><span>推荐条件</span></div><div class="filter-form"><label class="field"><span>城市</span><select name="city"><option value="">不限城市</option></select><i data-lucide="chevron-down"></i></label><label class="field"><span>预算上限</span><input type="number" name="maxBudget" min="0" step="1" placeholder="例如 1000"></label><label class="field"><span>偏好艺人</span><select name="artist"><option value="">不限艺人</option></select><i data-lucide="chevron-down"></i></label><label class="field"><span>排序依据</span><select name="sort"><option value="match">综合匹配</option><option value="price">价格优先</option></select><i data-lucide="chevron-down"></i></label><button class="filter-submit" type="submit" aria-label="生成推荐"><i data-lucide="sparkles"></i></button><button class="filter-reset" type="reset" aria-label="重置"><i data-lucide="rotate-ccw"></i></button></div></form>
+                <div class="view-alert" data-view-alert="recommendations" hidden></div><div class="recommendation-meta"><p id="recommendation-summary">正在准备推荐结果</p><span>分数表示规则匹配程度</span></div><div class="recommendation-grid" id="recommendation-list" aria-live="polite" aria-busy="true"><div class="loading-block"><span class="spinner"></span>正在读取推荐</div></div>
+            </section>
+
+            <section class="view" id="view-data" data-view="data" aria-labelledby="data-title" hidden>
+                <div class="route-hero compact"><div><span class="eyebrow"><span class="eyebrow-line"></span>数据治理</span><h1 id="data-title">数据与<br><em>任务中心</em></h1></div><p>核对来源覆盖、质量指标、处理批次与 Spark / YARN 任务。</p></div>
+                <div class="analysis-tabs" role="tablist" aria-label="数据中心视图"><button class="is-active" type="button" role="tab" aria-selected="true" data-data-tab="quality"><i data-lucide="shield-check"></i><span>数据质量</span></button><button type="button" role="tab" aria-selected="false" data-data-tab="jobs"><i data-lucide="workflow"></i><span>任务记录</span></button></div>
+                <div class="view-alert" data-view-alert="quality" hidden></div><div class="view-alert" data-view-alert="jobs" hidden></div>
+                <div class="data-pane is-active" data-data-pane="quality"><div class="quality-grid"><article class="admin-stat-card"><span class="panel-kicker">总记录数</span><strong data-quality-metric="total">--</strong><span class="metric-note">当前发布批次</span></article><article class="admin-stat-card"><span class="panel-kicker">必填缺失</span><strong data-quality-metric="missing">--</strong><span class="metric-note" data-quality-rate="missing">--</span></article><article class="admin-stat-card"><span class="panel-kicker">重复记录</span><strong data-quality-metric="duplicates">--</strong><span class="metric-note" data-quality-rate="duplicates">--</span></article><article class="admin-stat-card"><span class="panel-kicker">来源覆盖</span><strong data-quality-metric="sources">--</strong><span class="metric-note">已识别来源</span></article></div><div class="quality-layout"><article class="chart-panel"><div class="panel-head"><div><span class="panel-kicker">来源覆盖</span><h3>数据来源构成</h3></div><button class="table-action" type="button" data-chart-table="quality-sources" aria-pressed="false" aria-label="切换为数据表"><i data-lucide="table-2"></i></button></div><div class="chart-shell"><div class="chart" id="quality-sources-chart" data-chart="quality-sources" role="img" aria-label="数据来源构成图"></div><div class="chart-table" id="quality-sources-table" data-chart-table-view="quality-sources" hidden></div><div class="chart-state is-loading" data-chart-state="quality-sources"><span class="spinner"></span><span>正在读取质量数据</span></div></div><p class="chart-summary" id="quality-sources-summary"></p></article><article class="chart-panel batch-panel"><div class="panel-head"><div><span class="panel-kicker">处理记录</span><h3>最近数据批次</h3></div></div><div class="batch-list" id="quality-batch-list"><div class="table-state"><span class="spinner"></span>正在读取批次</div></div></article><article class="chart-panel source-quality-panel"><div class="panel-head"><div><span class="panel-kicker">质量明细</span><h3>来源与异常指标</h3></div></div><div class="data-table-wrap"><table class="data-table source-quality-table"><thead><tr><th>来源</th><th>指标</th><th>指标值</th><th>记录数</th><th>缺失</th><th>重复</th></tr></thead><tbody id="quality-source-metrics-body"><tr><td colspan="6"><div class="table-state"><span class="spinner"></span>正在读取来源指标</div></td></tr></tbody></table></div></article></div></div>
+                <div class="data-pane" data-data-pane="jobs" hidden><section class="results-panel jobs-panel"><div class="results-meta"><p><strong id="job-result-count">--</strong> 条任务</p><span id="job-summary">公开批次运行摘要</span></div><div class="data-table-wrap"><table class="data-table jobs-table"><thead><tr><th>任务</th><th>状态 / 引擎</th><th>成功 / 输入</th><th>耗时</th><th>开始时间</th><th>完成时间</th></tr></thead><tbody id="jobs-table-body"><tr><td colspan="6"><div class="table-state"><span class="spinner"></span>正在读取任务</div></td></tr></tbody></table></div><div class="pagination"><button class="table-action" type="button" data-job-page="prev" aria-label="上一页" disabled><i data-lucide="chevron-left"></i></button><span id="job-page-label">第 1 页</span><button class="table-action" type="button" data-job-page="next" aria-label="下一页" disabled><i data-lucide="chevron-right"></i></button></div></section></div>
+            </section>
+        </main>
+
+        <footer class="site-footer"><div class="footer-brand"><span class="brand-dot"></span><span>PULSE / ATLAS</span></div><div class="footer-note">SPRING BOOT · SPARK · ECHARTS<br>公开数据 / 发布批次</div><a href="#overview" class="footer-top" aria-label="返回概览"><i data-lucide="arrow-up"></i></a></footer>
+    </div>
+</div>
+
+<dialog class="modal-dialog" id="global-search-dialog" aria-labelledby="global-search-title"><div class="modal-header"><div><span class="panel-kicker">全部演出项目</span><h2 id="global-search-title">搜索演唱会</h2></div><button class="icon-button" type="button" data-global-search-close aria-label="关闭搜索"><i data-lucide="x"></i></button></div><form class="modal-search" id="global-search-form"><label class="search-field"><i data-lucide="search"></i><input id="global-search-input" type="search" name="q" placeholder="艺人 / 项目 / 城市 / 场馆" autocomplete="off" required></label><button class="btn btn-primary" type="submit"><span>搜索</span><i data-lucide="arrow-up-right"></i></button></form><div class="modal-results" id="global-search-results" aria-live="polite"><div class="empty-state">输入关键词查找全部演出项目</div></div></dialog>
+<dialog class="modal-dialog day-dialog" id="calendar-day-dialog" aria-labelledby="calendar-day-title"><div class="modal-header"><div><span class="panel-kicker">演出日历</span><h2 id="calendar-day-title">当日项目</h2></div><button class="icon-button" type="button" data-calendar-day-close aria-label="关闭当日项目"><i data-lucide="x"></i></button></div><div class="modal-results" id="calendar-day-results"></div></dialog>
+
+<div class="drawer-backdrop" data-drawer-close hidden></div>
+<aside class="detail-drawer" id="detail-drawer" role="dialog" aria-modal="true" aria-labelledby="detail-title" aria-hidden="true" tabindex="-1"><div class="drawer-header"><div><span class="panel-kicker">项目详情</span><h2 id="detail-title">演唱会信息</h2></div><button class="drawer-close" type="button" data-drawer-close aria-label="关闭详情"><i data-lucide="x"></i></button></div><div class="drawer-body" id="detail-body"><div class="loading-block"><span class="spinner"></span>正在读取详情</div></div></aside>
+<div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
