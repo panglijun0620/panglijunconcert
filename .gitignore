@@ -27,3 +27,6 @@ __pycache__/
 .idea/
 *.iml
 
+
+# 实验产物备份（与正式目录重复，不进仓库）
+data/cleaned/*.bak-*/
