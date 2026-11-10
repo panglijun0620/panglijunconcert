@@ -200,8 +200,10 @@ public final class JdbcBatchPublisher {
                 statement.executeUpdate();
             }
         }
+        // 只清理历史计算作业，保留采集阶段（CRAWL_ 前缀）的运行记录。
+        // 采集记录不属于本批次产出，删掉会让“任务记录”页看不到采集环节。
         try (PreparedStatement statement = connection.prepareStatement(
-                "DELETE FROM spark_job_run WHERE id <> ?")) {
+                "DELETE FROM spark_job_run WHERE id <> ? AND job_type NOT LIKE 'CRAWL_%'")) {
             statement.setLong(1, jobRunId);
             statement.executeUpdate();
         }
