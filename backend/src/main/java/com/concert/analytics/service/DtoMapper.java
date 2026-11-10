@@ -1,9 +1,11 @@
 package com.concert.analytics.service;
 
 import com.concert.analytics.api.ApiDtos.BatchSummary;
+import com.concert.analytics.api.ApiDtos.CommentItem;
 import com.concert.analytics.api.ApiDtos.ConcertItem;
 import com.concert.analytics.api.ApiDtos.JobItem;
 import com.concert.analytics.api.ApiDtos.RiskItem;
+import com.concert.analytics.domain.Comment;
 import com.concert.analytics.domain.Concert;
 import com.concert.analytics.domain.ConcertPolicy;
 import com.concert.analytics.domain.DataBatch;
@@ -65,6 +67,14 @@ final class DtoMapper {
                 job.getExecutionEngine(), job.getStatus(),
                 job.getInputCount(), job.getSuccessCount(), job.getFailedCount(), job.getDurationMs(),
                 job.getStartedAt(), job.getFinishedAt());
+    }
+
+    /** 原始评论下钻用的映射：只输出展示需要的字段，不带关联实体。 */
+    static CommentItem comment(Comment comment) {
+        return new CommentItem(
+                comment.getId(), tidy(comment.getCommentText()), comment.getCommentTime(), comment.getLikeCount(),
+                comment.getUserRegion(), comment.getSourceType(), comment.getSentimentScore(),
+                sentimentLabel(comment.getSentimentScore()), comment.getPrimaryTopic());
     }
 
     static String sentimentLabel(BigDecimal score) {

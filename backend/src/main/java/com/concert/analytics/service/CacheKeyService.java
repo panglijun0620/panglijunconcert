@@ -39,6 +39,16 @@ public class CacheKeyService {
                 .toString();
     }
 
+    /**
+     * 解读缓存键：数据版本变了就自然失效，同一批次内同一对象只生成一次。
+     */
+    public String insight(String objectName) {
+        return new StringJoiner(":")
+                .add(datasetVersionService.currentVersion())
+                .add(normalizeExact(objectName).toLowerCase(Locale.ROOT))
+                .toString();
+    }
+
     public boolean cacheableRecommendations(
             String city, BigDecimal maxBudget, String artist, String sort, int limit) {
         return normalizeExact(city).isEmpty()

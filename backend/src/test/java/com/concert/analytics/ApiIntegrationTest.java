@@ -270,7 +270,8 @@ class ApiIntegrationTest {
 
         mockMvc.perform(get("/api/v1/jobs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0].executionEngine").value("SPARK_ON_YARN"))
+                .andExpect(jsonPath("$.items[?(@.executionEngine=='SPARK_ON_YARN')]", hasSize(greaterThan(0))))
+                .andExpect(jsonPath("$.items[?(@.jobType=='CRAWL_DAMAI')]", hasSize(greaterThan(0))))
                 .andExpect(jsonPath("$.items[0].applicationId").doesNotExist())
                 .andExpect(jsonPath("$.items[0].workerSummary").doesNotExist())
                 .andExpect(jsonPath("$.items[0].message").doesNotExist())

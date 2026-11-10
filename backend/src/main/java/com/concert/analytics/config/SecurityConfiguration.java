@@ -41,6 +41,12 @@ public class SecurityConfiguration {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> {
+                    authorize
+                            .requestMatchers("/", "/login.html", "/annotate.html", "/favicon.ico",
+                                    "/css/**", "/js/**", "/assets/**")
+                            .permitAll()
+                            .requestMatchers("/api/v1/auth/me").authenticated()
+                            .requestMatchers("/actuator/health", "/error").permitAll();
                     if (properties.getAdmin().isEnabled()) {
                         authorize.requestMatchers("/api/v1/admin/**", "/h2-console/**").hasRole("ADMIN");
                     } else {
@@ -48,8 +54,7 @@ public class SecurityConfiguration {
                         authorize.requestMatchers("/h2-console/**").denyAll();
                     }
                     authorize
-                            .requestMatchers("/", "/favicon.ico", "/css/**", "/js/**", "/assets/**").permitAll()
-                            .requestMatchers("/api/v1/**", "/actuator/health", "/error").permitAll()
+                            .requestMatchers("/api/v1/**").permitAll()
                             .anyRequest().denyAll();
                 })
                 .exceptionHandling(errors -> errors
@@ -80,16 +85,29 @@ public class SecurityConfiguration {
                     .roles("ADMIN")
                     .build());
         }
-        String configuredPassword = properties.getAdmin().getPassword();
-        if (configuredPassword == null || configuredPassword.isBlank()) {
-            configuredPassword = UUID.randomUUID().toString();
-            log.warn("ADMIN_PASSWORD is empty; administrator endpoints use an ephemeral password for this process");
-        }
-        return new InMemoryUserDetailsManager(User.builder()
+        InMemoryUserDetailsManager manager = new InMemoryUserDetailsManager();
+        manager.createUser(User.builder()
                 .username(properties.getAdmin().getUsername())
-                .password(passwordEncoder.encode(configuredPassword))
+                .password(passwordEncoder.encode(resolvePassword(
+                        properties.getAdmin().getPassword(), "ADMIN_PASSWORD")))
                 .roles("ADMIN")
                 .build());
+        manager.createUser(User.builder()
+                .username(properties.getViewer().getUsername())
+                .password(passwordEncoder.encode(resolvePassword(
+                        properties.getViewer().getPassword(), "VIEWER_PASSWORD")))
+                .roles("VIEWER")
+                .build());
+        return manager;
+    }
+
+    /** 密码没配就随机生成一个，保证不会被空密码登录；随机值只在本次进程内有效。 */
+    private static String resolvePassword(String configured, String propertyName) {
+        if (configured == null || configured.isBlank()) {
+            log.warn("{} is empty; the account uses an ephemeral password for this process", propertyName);
+            return UUID.randomUUID().toString();
+        }
+        return configured;
     }
 
     @Bean

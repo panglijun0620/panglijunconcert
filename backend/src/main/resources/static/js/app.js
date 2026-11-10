@@ -28,6 +28,10 @@
         AUDIO_VISUAL: '视听效果',
         VENUE_SERVICE: '场馆服务',
         TRANSPORT: '交通出行',
+        CRAWL_SHOWSTART: '秀动采集',
+        CRAWL_PIAONIU: '票牛采集',
+        CRAWL_PUBLIC: '公开页采集',
+        CRAWL_DAMAI: '大麦评论采集',
     };
     const displayLabel = (value) => {
         const label = String(value ?? '').trim();
@@ -53,6 +57,42 @@
         recommendations: `${API}/recommendations`,
         quality: `${API}/data/quality`,
         jobs: `${API}/jobs`,
+        comments: `${API}/comments`,
+        insights: `${API}/insights`,
+        exportMarket: `${API}/export/market`,
+        exportRisks: `${API}/export/risks`,
+        exportComments: `${API}/export/comments`,
+        authMe: `${API}/auth/me`,
+        adminLogs: `${API}/admin/logs`,
+    };
+
+    /**
+     * 登录态只存在 sessionStorage：关掉标签页就失效，不落到磁盘上。
+     * 用的是 HTTP Basic，账号密码由服务端内存用户存储校验，系统没有用户注册表。
+     */
+    const AUTH_KEY = 'pa-auth';
+    const auth = {
+        read() {
+            try {
+                const raw = sessionStorage.getItem(AUTH_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return parsed && parsed.token && parsed.user ? parsed : null;
+            } catch (_) {
+                return null;
+            }
+        },
+        headers() {
+            const current = auth.read();
+            return current ? { Authorization: `Basic ${current.token}` } : {};
+        },
+        isAdmin() {
+            const current = auth.read();
+            return Boolean(current && current.user && current.user.admin);
+        },
+        clear() {
+            try { sessionStorage.removeItem(AUTH_KEY); } catch (_) { /* 无痕模式下会抛错，忽略 */ }
+        },
     };
 
     const state = {
@@ -81,6 +121,9 @@
         dataTab: 'quality',
         jobPage: 1,
         jobPages: 1,
+        logPage: 1,
+        logPages: 1,
+        authUser: null,
         lastDrawerFocus: null,
         detailId: null,
         globalSearchOpener: null,
@@ -248,7 +291,7 @@
             const response = await fetch(target, {
                 method: 'GET',
                 credentials: 'same-origin',
-                headers: { Accept: 'application/json' },
+                headers: { Accept: 'application/json', ...auth.headers() },
                 signal: controller.signal,
                 ...options,
             });
@@ -953,6 +996,184 @@
         }
     };
 
+    // ===== 原始评论下钻 =====
+    const commentView = { params: {}, page: 0, size: 20, lastFocus: null };
+
+    const commentBandText = (band) => ({
+        NEGATIVE: '负面', POSITIVE: '正面', NEUTRAL: '中性', UNSCORED: '未判定',
+    })[String(band || '').toUpperCase()] || '全部';
+
+    const closeCommentDrawer = (restoreFocus = true) => {
+        const drawer = $('#comment-drawer');
+        if (!drawer) return;
+        drawer.classList.remove('is-open');
+        drawer.setAttribute('aria-hidden', 'true');
+        const backdrop = $('#comment-backdrop');
+        if (backdrop) backdrop.hidden = true;
+        $('#app-shell').inert = false;
+        document.body.classList.remove('drawer-open');
+        resetInsight();
+        if (restoreFocus && commentView.lastFocus instanceof HTMLElement) commentView.lastFocus.focus();
+    };
+
+    const renderCommentList = (payload) => {
+        const body = $('#comment-drawer-body');
+        if (!body) return;
+        const pageInfo = pick(payload, ['page'], {}) || {};
+        const items = arrayAt(pageInfo, ['items']);
+        const total = numberValue(pick(payload, ['matchedSamples'], items.length));
+        const version = String(pick(payload, ['datasetVersion'], ''));
+        const notice = String(pick(payload, ['scopeNotice'], ''));
+        const current = numberValue(pick(pageInfo, ['page', 'number'], 0));
+        const totalPages = numberValue(pick(pageInfo, ['totalPages'], 1));
+        const isLast = Boolean(pick(pageInfo, ['last'], true));
+
+        const head = `<div class="comment-scope">
+            <div><span>命中样本</span><strong>${formatInteger(total)}</strong></div>
+            <div><span>数据批次</span><strong>${escapeHTML(version)}</strong></div>
+        </div>
+        <p class="detail-note">${escapeHTML(notice)}</p>`;
+
+        if (!items.length) {
+            body.innerHTML = `${head}<div class="empty-state">当前条件下没有匹配的评论样本</div>`;
+            body.setAttribute('aria-busy', 'false');
+            return;
+        }
+
+        const rows = items.map((item) => {
+            const band = String(pick(item, ['sentimentLabel'], 'unscored')).toLowerCase();
+            const score = maybeNumber(pick(item, ['sentimentScore'], null));
+            const scoreText = score === null ? '' : ` ${score.toFixed(2)}`;
+            return `<article class="comment-row">
+                <p>${escapeHTML(String(pick(item, ['text'], '')))}</p>
+                <footer>
+                    <span class="comment-band comment-band-${escapeHTML(band)}">${escapeHTML(commentBandText(band))}${escapeHTML(scoreText)}</span>
+                    <span>${escapeHTML(displayLabel(String(pick(item, ['primaryTopic'], 'other'))))}</span>
+                    <span>${escapeHTML(String(pick(item, ['userRegion'], '未知地区')))}</span>
+                    <span>赞 ${formatInteger(pick(item, ['likeCount'], 0))}</span>
+                </footer>
+            </article>`;
+        }).join('');
+
+        const pager = `<div class="detail-pager">
+            <button class="button button-secondary" type="button" data-comment-page="prev" ${current <= 0 ? 'disabled' : ''}>上一页</button>
+            <span>第 ${current + 1} / ${Math.max(totalPages, 1)} 页</span>
+            <button class="button button-secondary" type="button" data-comment-page="next" ${isLast ? 'disabled' : ''}>下一页</button>
+        </div>`;
+
+        body.innerHTML = `${head}<div class="comment-list">${rows}</div>${pager}`;
+        body.setAttribute('aria-busy', 'false');
+        refreshIcons();
+    };
+
+    const loadComments = async (page = 0) => {
+        const body = $('#comment-drawer-body');
+        if (!body) return;
+        commentView.page = Math.max(page, 0);
+        body.setAttribute('aria-busy', 'true');
+        body.innerHTML = '<div class="loading-block"><span class="spinner" aria-hidden="true"></span><span>正在读取评论样本</span></div>';
+        try {
+            const query = new URLSearchParams();
+            Object.entries(commentView.params).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') query.set(key, value);
+            });
+            query.set('page', String(commentView.page));
+            query.set('size', String(commentView.size));
+            const payload = await requestJSON(endpoints.comments, query);
+            renderCommentList(payload);
+        } catch (error) {
+            body.innerHTML = `<div class="empty-state"><div><p>${escapeHTML(error.message)}</p><button class="button button-secondary" type="button" data-comment-retry><i data-lucide="refresh-cw"></i><span>重试</span></button></div></div>`;
+            body.setAttribute('aria-busy', 'false');
+            refreshIcons();
+        }
+    };
+
+    const openCommentDrawer = (params, title, focusOrigin = null) => {
+        const drawer = $('#comment-drawer');
+        if (!drawer) return;
+        commentView.params = params || {};
+        commentView.lastFocus = focusOrigin || document.activeElement;
+        const heading = $('#comment-drawer-title');
+        if (heading) heading.textContent = title || '评论样本';
+        drawer.classList.add('is-open');
+        drawer.setAttribute('aria-hidden', 'false');
+        const backdrop = $('#comment-backdrop');
+        if (backdrop) backdrop.hidden = false;
+        $('#app-shell').inert = true;
+        document.body.classList.add('drawer-open');
+        loadComments(0);
+        loadInsight(commentView.params.artist || '');
+    };
+
+    // ===== 风险对象解读 =====
+    // 只对风险对象出解读；模型不可用时后端直接返回模板文案，这里不做任何报错提示。
+    const insightView = { name: '', token: 0 };
+
+    const resetInsight = () => {
+        const block = $('#insight-block');
+        if (!block) return;
+        insightView.name = '';
+        insightView.token += 1;
+        block.hidden = true;
+        const body = $('#insight-body');
+        if (body) body.innerHTML = '';
+        const source = $('#insight-source');
+        if (source) {
+            source.textContent = '';
+            source.className = 'insight-source';
+        }
+    };
+
+    const renderInsight = (payload) => {
+        const body = $('#insight-body');
+        const sourceTag = $('#insight-source');
+        if (!body) return;
+        const text = String(pick(payload, ['text'], '') || '').trim();
+        const source = String(pick(payload, ['source'], 'none') || 'none');
+        if (!text) {
+            body.innerHTML = '<p class="insight-empty">暂无解读</p>';
+            body.setAttribute('aria-busy', 'false');
+            return;
+        }
+        const rawQuotes = pick(payload, ['quotes'], []);
+        const quotes = Array.isArray(rawQuotes) ? rawQuotes : [];
+        if (sourceTag) {
+            sourceTag.textContent = source === 'model' ? '模型生成' : '规则模板生成';
+            sourceTag.className = source === 'model'
+                ? 'insight-source insight-source-model'
+                : 'insight-source';
+        }
+        const quoteRows = quotes.slice(0, 3).map((quote) => `<li>${escapeHTML(String(quote))}</li>`).join('');
+        body.innerHTML = `<p class="insight-text">${escapeHTML(text)}</p>${quoteRows ? `<ul class="insight-quotes">${quoteRows}</ul>` : ''}`;
+        body.setAttribute('aria-busy', 'false');
+    };
+
+    const loadInsight = async (name) => {
+        const block = $('#insight-block');
+        const body = $('#insight-body');
+        if (!block || !body || !name) {
+            resetInsight();
+            return;
+        }
+        insightView.name = name;
+        const token = ++insightView.token;
+        block.hidden = false;
+        body.setAttribute('aria-busy', 'true');
+        body.innerHTML = '<div class="loading-block"><span class="spinner" aria-hidden="true"></span><span>正在生成解读</span></div>';
+        try {
+            const query = new URLSearchParams();
+            query.set('object', name);
+            const payload = await requestJSON(endpoints.insights, query);
+            if (token !== insightView.token) return;
+            renderInsight(payload);
+        } catch (error) {
+            // 解读失败不遮挡评论列表：直接显示“暂无”，不把异常抛给用户
+            if (token !== insightView.token) return;
+            body.innerHTML = '<p class="insight-empty">暂无解读</p>';
+            body.setAttribute('aria-busy', 'false');
+        }
+    };
+
     const marketSeries = (payload, tab) => {
         if (tab === 'trend') {
             return {
@@ -1108,15 +1329,28 @@
     const renderSentimentRisks = (risks) => {
         const target = $('#sentiment-risk-list');
         if (!target) return;
-        target.innerHTML = risks.length ? risks.map((risk) => `<div class="risk-entry"><strong>${escapeHTML(risk.name)}</strong><span class="status-pill ${riskStatusClass(risk)}">${escapeHTML(riskLevelLabel(risk))} ${escapeHTML(risk.negativeRate !== null ? formatRatio(risk.negativeRate) : formatSentiment(risk.score))}</span><p>${escapeHTML(risk.topic)} · ${formatInteger(risk.samples)} 条样本</p><small>批次 ${escapeHTML(risk.batchId)} · ${escapeHTML(risk.rule)}</small></div>`).join('') : '<div class="empty-state">当前批次未识别到重点预警或关注对象</div>';
+        target.innerHTML = risks.length ? risks.map((risk) => `<button class="risk-entry risk-entry-action" type="button" data-risk-name="${escapeHTML(risk.name)}" title="查看该对象的负面评论"><strong>${escapeHTML(risk.name)}</strong><span class="status-pill ${riskStatusClass(risk)}">${escapeHTML(riskLevelLabel(risk))} ${escapeHTML(risk.negativeRate !== null ? formatRatio(risk.negativeRate) : formatSentiment(risk.score))}</span><p>${escapeHTML(risk.topic)} · ${formatInteger(risk.samples)} 条样本</p><small>批次 ${escapeHTML(risk.batchId)} · ${escapeHTML(risk.rule)}</small></button>`).join('') : '<div class="empty-state">当前批次未识别到重点预警或关注对象</div>';
     };
 
-    /** 主题 / 地区维度中，规则已判定评论的负面占比。 */
+    /** 主题 / 地区维度中，规则已判定评论的负面占比。点柱子可直接下钻到该主题或地区的原始评论。 */
     const renderNegativeBreakdowns = (payload) => {
-        const toItems = (raw) => raw.map((item) => ({
-            name: displayLabel(pick(item, ['label', 'name'], '未分类')),
-            value: Math.round(numberValue(pick(item, ['negativeRatio', 'negativeRate'], 0)) * 1000) / 10,
-        })).filter((item) => Number.isFinite(item.value));
+        const toItems = (raw) => raw.map((item) => {
+            const rawLabel = String(pick(item, ['label', 'name'], ''));
+            return {
+                name: displayLabel(rawLabel || '未分类'),
+                rawLabel,
+                value: Math.round(numberValue(pick(item, ['negativeRatio', 'negativeRate'], 0)) * 1000) / 10,
+            };
+        }).filter((item) => Number.isFinite(item.value));
+
+        const drillInto = (params, items, field, suffix) => {
+            const hit = items.find((item) => item.name === params.name);
+            if (!hit || !hit.rawLabel) return;
+            openCommentDrawer(
+                { [field]: hit.rawLabel, sentiment: 'NEGATIVE' },
+                `${hit.name} · ${suffix}`,
+            );
+        };
 
         const topics = toItems(arrayAt(payload, ['topicRisks']));
         renderSeriesChart('topic-risk', topics, {
@@ -1127,9 +1361,10 @@
             colorKeys: ['negative'],
             emptyMessage: '当前条件下暂无主题数据',
             tableFormatter: (item) => `${item.value}%`,
+            onClick: (params) => drillInto(params, topics, 'topic', '负面评论'),
         });
         setSummary('topic-risk-summary', topics.length
-            ? `共 ${topics.length} 个主题；数值为该主题已判定评论中负面评论的占比。`
+            ? `共 ${topics.length} 个主题；数值为该主题已判定评论中负面评论的占比。点击柱条可查看对应的原始评论。`
             : '当前条件下暂无主题数据。');
 
         const regions = toItems(arrayAt(payload, ['regionRisks'])).slice(0, 10);
@@ -1141,9 +1376,10 @@
             colorKeys: ['negative'],
             emptyMessage: '当前条件下暂无地区数据',
             tableFormatter: (item) => `${item.value}%`,
+            onClick: (params) => drillInto(params, regions, 'region', '负面评论'),
         });
         setSummary('region-risk-summary', regions.length
-            ? `按评论用户所在地区统计，样本量 ≥ 200 条的省份参与排名，取负面占比最高的 ${regions.length} 个。`
+            ? `按评论用户所在地区统计，样本量 ≥ 200 条的省份参与排名，取负面占比最高的 ${regions.length} 个。点击柱条可查看该地区的原始评论。`
             : '当前条件下暂无地区数据。');
     };
 
@@ -1388,6 +1624,105 @@
         }
     };
 
+    /** 市场页四个标签页与导出维度的对应关系。 */
+    const MARKET_EXPORT_DIMENSIONS = { city: 'cities', trend: 'trend', price: 'prices', artist: 'artists' };
+
+    const responseFilename = (response) => {
+        const header = response.headers.get('Content-Disposition') || '';
+        const match = /filename\*=UTF-8''([^;]+)/i.exec(header);
+        if (!match) return 'export.csv';
+        try { return decodeURIComponent(match[1]); } catch (_) { return 'export.csv'; }
+    };
+
+    const saveBlob = (blob, filename) => {
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    };
+
+    const runExport = async (kind, button) => {
+        let url;
+        let label;
+        if (kind === 'market') {
+            const dimension = MARKET_EXPORT_DIMENSIONS[state.marketTab] || 'artists';
+            url = `${endpoints.exportMarket}?dimension=${encodeURIComponent(dimension)}`;
+            label = '市场榜单';
+        } else if (kind === 'risks') {
+            url = endpoints.exportRisks;
+            label = '预警名单';
+        } else {
+            const params = new URLSearchParams();
+            Object.entries(commentView.params || {}).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') params.set(key, value);
+            });
+            params.set('limit', '5000');
+            url = `${endpoints.exportComments}?${params.toString()}`;
+            label = '评论检索结果';
+        }
+        if (button) button.disabled = true;
+        try {
+            const response = await fetch(url, { headers: { Accept: 'text/csv', ...auth.headers() } });
+            if (!response.ok) throw new Error(`导出失败（${response.status}）`);
+            saveBlob(await response.blob(), responseFilename(response));
+            announce(`已导出${label}`);
+        } catch (error) {
+            announce(error.message || '导出失败', 'error');
+        } finally {
+            if (button) button.disabled = false;
+        }
+    };
+
+    const OPERATION_ACTIONS = {
+        EXPORT_MARKET: '导出市场榜单',
+        EXPORT_RISKS: '导出预警名单',
+        EXPORT_COMMENTS: '导出评论',
+        CLEAR_CACHE: '清理缓存',
+    };
+
+    const renderOperationLogs = (payload) => {
+        const rows = Array.isArray(payload) ? payload : arrayAt(payload, ['items', 'content', 'records']);
+        const total = numberValue(pick(payload, ['totalElements', 'total'], rows.length));
+        const pages = Math.max(1, numberValue(pick(payload, ['totalPages', 'pages'], 1), 1));
+        const current = numberValue(pick(payload, ['page', 'number'], 0)) + 1;
+        state.logPages = pages;
+        state.logPage = current;
+        $('#log-result-count').textContent = formatInteger(total);
+        $('#log-page-label').textContent = `第 ${current} / ${pages} 页`;
+        $('[data-log-page="prev"]').disabled = current <= 1;
+        $('[data-log-page="next"]').disabled = current >= pages;
+        const body = $('#logs-table-body');
+        body.innerHTML = rows.length ? rows.map((row) => {
+            const ok = pick(row, ['success'], true);
+            const account = escapeHTML(pick(row, ['account'], ''));
+            const role = escapeHTML(pick(row, ['role'], ''));
+            const actionKey = pick(row, ['action'], '');
+            const action = escapeHTML(OPERATION_ACTIONS[actionKey] || actionKey);
+            return `<tr><td>${escapeHTML(formatDateTime(pick(row, ['occurredAt', 'time'])))}</td><td><div class="cell-stack"><strong>${account}</strong><small>${role}</small></div></td><td>${action}</td><td><div class="cell-stack"><span>${escapeHTML(pick(row, ['target'], ''))}</span><small>${escapeHTML(pick(row, ['detail'], ''))}</small></div></td><td><span class="status-pill ${statusClass(ok ? 'SUCCEEDED' : 'FAILED')}">${ok ? '成功' : '失败'}</span></td><td>${escapeHTML(pick(row, ['clientIp'], ''))}</td></tr>`;
+        }).join('') : '<tr><td colspan="6"><div class="empty-state">暂无操作记录</div></td></tr>';
+        refreshIcons();
+    };
+
+    const loadOperationLogs = async () => {
+        const body = $('#logs-table-body');
+        if (!body) return;
+        if (!auth.isAdmin()) {
+            body.innerHTML = '<tr><td colspan="6"><div class="empty-state">请使用管理员账号登录后查看操作日志</div></td></tr>';
+            return;
+        }
+        body.innerHTML = '<tr><td colspan="6"><div class="table-state"><span class="spinner" aria-hidden="true"></span>正在读取操作日志</div></td></tr>';
+        try {
+            const params = new URLSearchParams({ page: String(Math.max(0, state.logPage - 1)), size: '15' });
+            renderOperationLogs(await requestJSON(endpoints.adminLogs, params));
+        } catch (error) {
+            body.innerHTML = `<tr><td colspan="6"><div class="empty-state">${escapeHTML(error.message)}</div></td></tr>`;
+        }
+    };
+
     const loaders = {
         health: loadHealth,
         dashboard: loadDashboard,
@@ -1524,6 +1859,7 @@
             pane.classList.toggle('is-active', active);
         });
         if (tab === 'jobs') loadResource('jobs');
+        if (tab === 'logs') loadOperationLogs();
         else window.requestAnimationFrame(() => state.charts.get('quality-sources')?.resize());
     };
 
@@ -1671,6 +2007,24 @@
             const closeButton = event.target.closest('[data-drawer-close]');
             if (closeButton && !closeButton.matches('.sidebar-scrim')) closeDrawer();
 
+            const riskEntry = event.target.closest('[data-risk-name]');
+            if (riskEntry) openCommentDrawer(
+                { artist: riskEntry.dataset.riskName, sentiment: 'NEGATIVE' },
+                `${riskEntry.dataset.riskName} · 负面评论`,
+                riskEntry,
+            );
+
+            if (event.target.closest('[data-comment-close]')) closeCommentDrawer();
+
+            const commentPage = event.target.closest('[data-comment-page]');
+            if (commentPage && !commentPage.disabled) {
+                loadComments(commentPage.dataset.commentPage === 'next'
+                    ? commentView.page + 1
+                    : Math.max(commentView.page - 1, 0));
+            }
+
+            if (event.target.closest('[data-comment-retry]')) loadComments(commentView.page);
+
             const retry = event.target.closest('[data-retry-resource]');
             if (retry) {
                 const resource = retry.dataset.retryResource;
@@ -1686,6 +2040,22 @@
                 state.loaded.delete('jobs');
                 loadResource('jobs', true);
             }
+
+            const exportButton = event.target.closest('[data-export]');
+            if (exportButton && !exportButton.disabled) runExport(exportButton.dataset.export, exportButton);
+
+            const logPage = event.target.closest('[data-log-page]');
+            if (logPage && !logPage.disabled) {
+                state.logPage += logPage.dataset.logPage === 'next' ? 1 : -1;
+                loadOperationLogs();
+            }
+
+            if (event.target.closest('[data-logout]')) {
+                auth.clear();
+                applyAuthState();
+                announce('已退出登录');
+                $('#logs-table-body').innerHTML = '<tr><td colspan="6"><div class="empty-state">请使用管理员账号登录后查看操作日志</div></td></tr>';
+            }
         });
 
         document.addEventListener('keydown', (event) => {
@@ -1696,8 +2066,11 @@
                 else if (!drawer.classList.contains('is-open')) openGlobalSearch();
                 return;
             }
-            if (event.key === 'Tab' && drawer.classList.contains('is-open')) {
-                const focusable = $$('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])', drawer).filter((node) => !node.hidden);
+            const focusTrap = $('#comment-drawer')?.classList.contains('is-open')
+                ? $('#comment-drawer')
+                : (drawer.classList.contains('is-open') ? drawer : null);
+            if (event.key === 'Tab' && focusTrap) {
+                const focusable = $$('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])', focusTrap).filter((node) => !node.hidden);
                 if (focusable.length) {
                     const first = focusable[0];
                     const last = focusable[focusable.length - 1];
@@ -1711,15 +2084,37 @@
                 }
             }
             if (event.key !== 'Escape') return;
-            if (drawer.classList.contains('is-open')) closeDrawer();
+            const commentDrawer = $('#comment-drawer');
+            if (commentDrawer?.classList.contains('is-open')) closeCommentDrawer();
+            else if (drawer.classList.contains('is-open')) closeDrawer();
             else closeSidebar();
         });
+    };
+
+    const applyAuthState = () => {
+        const current = auth.read();
+        state.authUser = current ? current.user : null;
+        const nameNode = $('#account-name');
+        if (nameNode) {
+            nameNode.textContent = current ? (current.user.displayName || '已登录') : '登录';
+        }
+        const chip = $('#account-chip');
+        if (chip) {
+            chip.href = current ? '#data' : '/login.html';
+            chip.title = current ? `${current.user.username} · ${current.user.role}` : '登录账号';
+            chip.dataset.loggedIn = current ? 'true' : 'false';
+        }
+        const logTab = $('#data-tab-logs');
+        if (logTab) logTab.hidden = !auth.isAdmin();
+        const logout = $('#logout-button');
+        if (logout) logout.hidden = !current;
     };
 
     const initialize = () => {
         refreshIcons();
         setTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
         bindEvents();
+        applyAuthState();
         const route = routeFromHash();
         if (!ROUTES[route]) history.replaceState(null, '', '#overview');
         showRoute(ROUTES[route] ? route : 'overview');

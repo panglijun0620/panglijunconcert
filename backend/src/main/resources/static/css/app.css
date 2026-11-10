@@ -939,3 +939,81 @@ h1 em, h2 em { color: var(--lime); font-style: normal; }
     .metric-card:nth-child(3) { border-bottom: 1px solid var(--line); }
     .metric-card:last-child { border-bottom: 0; }
 }
+
+/* ===== 原始评论下钻抽屉 ===== */
+.comment-drawer { width: min(560px, 94vw); }
+.comment-scope { display: flex; gap: 10px; margin-bottom: 10px; }
+.comment-scope > div { flex: 1; min-width: 0; display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.comment-scope span { color: var(--muted); font: 10px var(--mono); letter-spacing: .04em; }
+.comment-scope strong { color: var(--ink); font: 600 12px var(--mono); overflow-wrap: anywhere; }
+.comment-list { display: grid; gap: 10px; margin-top: 14px; }
+.comment-row { border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 12px 14px; }
+.comment-row p { margin: 0 0 8px; color: var(--ink); font-size: 13px; line-height: 1.65; }
+.comment-row footer { display: flex; flex-wrap: wrap; gap: 8px 12px; color: var(--muted-2); font: 11px var(--mono); }
+.comment-band { padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; }
+.comment-band-negative { color: var(--coral); border-color: rgba(255, 131, 92, .45); }
+.comment-band-positive { color: var(--lime); border-color: rgba(36, 102, 64, .45); }
+.comment-band-neutral { color: var(--cyan); }
+.comment-band-unscored { color: var(--muted); }
+button.risk-entry-action { width: 100%; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.risk-entry-action:hover { background: rgba(255, 131, 92, .06); }
+button.risk-entry-action:focus-visible { outline: 2px solid var(--line); outline-offset: -2px; }
+
+/* ===== 风险对象解读（模型不可用时同区域降级为模板文案） ===== */
+.insight-block { flex: 0 0 auto; max-height: 40vh; overflow-y: auto; padding: 16px 22px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(220, 255, 88, .07), rgba(220, 255, 88, 0) 82%); }
+.insight-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.insight-source { color: var(--muted-2); font: 10px var(--mono); letter-spacing: .04em; }
+.insight-source-model { color: var(--lime); }
+.insight-text { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.78; }
+.insight-quotes { display: grid; gap: 7px; margin: 11px 0 0; padding: 0; list-style: none; }
+.insight-quotes li { padding-left: 10px; border-left: 2px solid rgba(255, 131, 92, .45); color: var(--muted); font-size: 11px; line-height: 1.6; }
+.insight-block .loading-block { min-height: 54px; justify-content: flex-start; }
+.insight-empty { margin: 0; color: var(--muted-2); font: 11px var(--mono); }
+
+/* ---------- 数据导出与账号登录 ---------- */
+.export-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 15px;
+    color: var(--lime);
+    background: var(--accent-tint);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font: 11px var(--mono);
+    letter-spacing: .05em;
+    cursor: pointer;
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
+}
+
+.export-button:hover {
+    color: var(--accent-hover);
+    background: var(--panel-overlay-hover);
+    border-color: var(--lime-dim);
+}
+
+.export-button:disabled { opacity: .55; cursor: default; }
+
+.export-button svg { width: 14px; height: 14px; }
+
+.export-button.is-small { padding: 7px 12px; font-size: 10px; }
+
+.drawer-head-actions { display: flex; align-items: center; gap: 10px; }
+
+.account-chip {
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    text-decoration: none;
+    transition: border-color .2s ease, color .2s ease, background .2s ease;
+}
+
+.account-chip:hover { border-color: var(--lime-dim); background: var(--accent-tint); }
+.account-chip[data-logged-in="true"] { color: var(--lime); border-color: var(--lime-dim); }
+
+.results-meta .export-button { margin-left: auto; }
+
+.logs-table td { vertical-align: top; font-size: 12px; }
+.logs-table .cell-stack { display: flex; flex-direction: column; gap: 3px; max-width: 330px; }
+.logs-table .cell-stack small { color: var(--muted-2); font: 10.5px var(--mono); word-break: break-all; }
+.logs-table .cell-stack strong { font-weight: 500; }

@@ -339,4 +339,80 @@ public final class ApiDtos {
             List<String> failed,
             Instant clearedAt) implements Serializable {
     }
+
+    /**
+     * 原始评论下钻结果。
+     *
+     * <p>scopeNotice 用于在页面上说明统计口径：评论按艺人和用户地区聚合，未与具体演出场次建立关联。
+     */
+    public record CommentSearchResponse(
+            String datasetVersion,
+            String scopeNotice,
+            long matchedSamples,
+            PageResponse<CommentItem> page) implements Serializable {
+    }
+
+    /**
+     * 风险对象解读结果。
+     *
+     * <p>source 标明这段文字从哪来：{@code model} 表示模型生成，{@code template} 表示模型不可用时的模板降级，
+     * {@code none} 表示当前批次没有这个对象、页面显示“暂无解读”。text 为空时不应视为错误。
+     */
+    public record InsightResponse(
+            String objectName,
+            String riskLevel,
+            BigDecimal negativeRatio,
+            long sampleSize,
+            String primaryNegativeTopic,
+            List<String> quotes,
+            String text,
+            String source,
+            Instant generatedAt) implements Serializable {
+    }
+
+    /**
+     * 操作日志条目。
+     *
+     * <p>action 是动作代号（导出榜单、导出预警、导出评论、清理缓存），target 是操作对象，
+     * detail 存查询条件，recordCount 是本次涉及的记录条数。
+     */
+    public record OperationLogItem(
+            long id,
+            Instant occurredAt,
+            String account,
+            String role,
+            String action,
+            String target,
+            String detail,
+            Long recordCount,
+            String clientIp,
+            boolean success) implements Serializable {
+    }
+
+    /**
+     * 当前登录账号，用于页面按角色显示不同入口。
+     *
+     * <p>role 为 ADMIN 时显示管理入口，VIEWER 只能查看大屏。
+     */
+    public record AuthUser(
+            String username,
+            String role,
+            boolean admin,
+            String displayName) implements Serializable {
+    }
+
+    /**
+     * 人工标注样本。
+     *
+     * <p>ruleLabel 是系统现有词表规则的判定结果，标注时页面先不展示，避免影响判断；
+     * 标注完成后才拿它和人工结果对比。
+     */
+    public record AnnotationSample(
+            long id,
+            String text,
+            String artist,
+            String topic,
+            java.math.BigDecimal score,
+            String ruleLabel) implements Serializable {
+    }
 }

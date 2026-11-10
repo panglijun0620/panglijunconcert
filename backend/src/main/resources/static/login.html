@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f8f6">
+    <title>PULSE ATLAS / 账号登录</title>
+    <style>
+        :root {
+            --ink: #10231b;
+            --muted: #5d7268;
+            --line: #d7e3dc;
+            --card: #ffffff;
+            --accent: #16795a;
+            --accent-soft: #e6f4ee;
+            --danger: #b03a2e;
+            --bg: #f2f6f3;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background:
+                radial-gradient(circle at 15% 12%, #e3f0e9 0, transparent 42%),
+                radial-gradient(circle at 88% 82%, #e8eef7 0, transparent 40%),
+                var(--bg);
+            font-family: "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", system-ui, sans-serif;
+            color: var(--ink);
+        }
+
+        .login-card {
+            width: min(420px, 100%);
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 36px 32px 28px;
+            box-shadow: 0 24px 60px rgba(16, 35, 27, .10);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .brand-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 0 4px var(--accent-soft);
+        }
+
+        h1 {
+            margin: 22px 0 6px;
+            font-size: 26px;
+            font-weight: 600;
+            letter-spacing: -.01em;
+        }
+
+        .subtitle {
+            margin: 0 0 26px;
+            font-size: 13.5px;
+            line-height: 1.7;
+            color: var(--muted);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 16px;
+        }
+
+        label span {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 12.5px;
+            color: var(--muted);
+            letter-spacing: .04em;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 14px;
+            font-size: 15px;
+            color: var(--ink);
+            background: #fbfdfc;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            outline: none;
+            transition: border-color .16s, box-shadow .16s;
+        }
+
+        input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+
+        button {
+            width: 100%;
+            margin-top: 6px;
+            padding: 12px 16px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            background: var(--accent);
+            border: 0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: filter .16s;
+        }
+
+        button:hover { filter: brightness(1.07); }
+        button:disabled { opacity: .65; cursor: default; }
+
+        .message {
+            min-height: 20px;
+            margin: 14px 0 0;
+            font-size: 13px;
+            color: var(--danger);
+        }
+
+        .footer-note {
+            margin: 26px 0 0;
+            padding-top: 18px;
+            border-top: 1px solid var(--line);
+            font-size: 12.5px;
+            line-height: 1.8;
+            color: var(--muted);
+        }
+
+        .footer-note a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .footer-note a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+<main class="login-card">
+    <div class="brand"><span class="brand-dot"></span><span>PULSE / ATLAS</span></div>
+    <h1>账号登录</h1>
+    <p class="subtitle">大数据看板无需登录即可查看。登录后可下载数据、查看操作日志；管理员还可用缓存管理入口。</p>
+
+    <form id="login-form" novalidate>
+        <label>
+            <span>账号</span>
+            <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+        </label>
+        <label>
+            <span>密码</span>
+            <input type="password" id="password" name="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit" id="submit-button">登录</button>
+    </form>
+
+    <p class="message" id="message" role="alert"></p>
+
+    <p class="footer-note">
+        账号由部署人员在服务器环境变量中配置，系统不开放注册。<br>
+        <a href="/">先以访客身份查看大屏</a>
+    </p>
+</main>
+
+<script>
+    (function () {
+        var STORAGE_KEY = 'pa-auth';
+        var form = document.getElementById('login-form');
+        var usernameInput = document.getElementById('username');
+        var passwordInput = document.getElementById('password');
+        var submitButton = document.getElementById('submit-button');
+        var message = document.getElementById('message');
+
+        function encodeBasic(user, pass) {
+            var raw = user + ':' + pass;
+            var bytes = new TextEncoder().encode(raw);
+            var binary = '';
+            bytes.forEach(function (byte) { binary += String.fromCharCode(byte); });
+            return btoa(binary);
+        }
+
+        function showError(text) {
+            message.style.color = '#b03a2e';
+            message.textContent = text;
+        }
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            var username = usernameInput.value.trim();
+            var password = passwordInput.value;
+            if (!username || !password) {
+                showError('请填写账号和密码');
+                return;
+            }
+            submitButton.disabled = true;
+            submitButton.textContent = '正在验证…';
+            message.textContent = '';
+
+            var token = encodeBasic(username, password);
+            fetch('/api/v1/auth/me', {
+                headers: { 'Authorization': 'Basic ' + token, 'Accept': 'application/json' }
+            }).then(function (response) {
+                if (response.status === 401) {
+                    throw new Error('账号或密码不正确');
+                }
+                if (!response.ok) {
+                    throw new Error('登录失败，服务返回 ' + response.status);
+                }
+                return response.json();
+            }).then(function (user) {
+                sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ token: token, user: user }));
+                message.style.color = '#16795a';
+                message.textContent = '登录成功，正在进入…';
+                window.location.href = '/';
+            }).catch(function (error) {
+                showError(error.message || '登录失败，请稍后重试');
+                submitButton.disabled = false;
+                submitButton.textContent = '登录';
+            });
+        });
+    })();
+</script>
+</body>
+</html>
