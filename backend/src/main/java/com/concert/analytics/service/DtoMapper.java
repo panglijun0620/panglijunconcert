@@ -66,6 +66,7 @@ final class DtoMapper {
                 job.getId(), job.getDataBatch() == null ? null : job.getDataBatch().getBatchId(), job.getJobType(),
                 job.getExecutionEngine(), job.getStatus(),
                 job.getInputCount(), job.getSuccessCount(), job.getFailedCount(), job.getDurationMs(),
+                job.getWorkerSummary(), job.getMessage(),
                 job.getStartedAt(), job.getFinishedAt());
     }
 

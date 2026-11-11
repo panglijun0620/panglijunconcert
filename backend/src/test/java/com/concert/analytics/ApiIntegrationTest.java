@@ -272,10 +272,35 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[?(@.executionEngine=='SPARK_ON_YARN')]", hasSize(greaterThan(0))))
                 .andExpect(jsonPath("$.items[?(@.jobType=='CRAWL_DAMAI')]", hasSize(greaterThan(0))))
+                // 采集任务的数字口径要随接口返回，页面靠它在任务名下面解释「入库 / 采集」两列怎么读
+                .andExpect(jsonPath("$.items[?(@.jobType=='CRAWL_SHOWSTART')].workerSummary",
+                        contains("列表去重 60 条 → 详情抓取入库 104 场")))
+                // 内部字段仍然不对外
                 .andExpect(jsonPath("$.items[0].applicationId").doesNotExist())
-                .andExpect(jsonPath("$.items[0].workerSummary").doesNotExist())
-                .andExpect(jsonPath("$.items[0].message").doesNotExist())
                 .andExpect(jsonPath("$.items[0].failureReason").doesNotExist());
+    }
+
+    @Test
+    void sentimentRisksFollowTheRegionFilter() throws Exception {
+        // 不筛选：风险来自整批的预计算结果，陈奕迅 ALERT + 关注艺人 WATCH 共两条
+        mockMvc.perform(get("/api/v1/sentiment"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalSamples").value(5))
+                .andExpect(jsonPath("$.risks", hasSize(2)))
+                .andExpect(jsonPath("$.risks[0].riskLevel").value("ALERT"));
+
+        // 只筛广东：该地区在种子数据里只有 2 条评论，不足最小样本量 20，
+        // 风险列表必须清空，不能继续显示整批算出来的那两条。
+        mockMvc.perform(get("/api/v1/sentiment").param("region", "广东"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalSamples").value(2))
+                .andExpect(jsonPath("$.risks", hasSize(0)));
+
+        // 换一个地区，情绪汇总也要跟着变，不能和整批数字一样
+        mockMvc.perform(get("/api/v1/sentiment").param("region", "江苏"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalSamples").value(1))
+                .andExpect(jsonPath("$.risks", hasSize(0)));
     }
 
     @Test

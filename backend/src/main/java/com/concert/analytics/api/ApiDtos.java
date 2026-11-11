@@ -330,6 +330,8 @@ public final class ApiDtos {
             long successCount,
             long failedCount,
             Long durationMs,
+            String workerSummary,
+            String message,
             Instant startedAt,
             Instant finishedAt) implements Serializable {
     }

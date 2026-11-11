@@ -593,7 +593,7 @@
         if (!node) return;
         node.setAttribute('aria-busy', 'false');
         if (!risks.length) {
-            node.innerHTML = '<div class="empty-state">当前批次未识别到历史舆情风险</div>';
+            node.innerHTML = '<div class="empty-state">当前批次未识别到舆情风险</div>';
             return;
         }
         node.innerHTML = risks.slice(0, 5).map((risk) => `<div class="risk-row"><strong>${escapeHTML(risk.name)}</strong><span class="risk-score risk-score-${risk.level.toLowerCase()}">${escapeHTML(riskLevelLabel(risk))} ${escapeHTML(risk.negativeRate !== null ? formatRatio(risk.negativeRate) : formatSentiment(risk.score))}</span><p>${escapeHTML(risk.topic)} · ${formatInteger(risk.samples)} 条样本</p></div>`).join('');
@@ -646,7 +646,7 @@
             const batchId = pick(batch, ['batchId', 'id', 'name'], pick(payload, ['datasetVersion'], '--'));
             const batchTime = pick(batch, ['finishedAt', 'processedAt', 'publishedAt', 'createdAt'], null);
             const batchCount = pick(batch, ['successCount', 'processedCount', 'recordCount'], null);
-            batchNode.innerHTML = `<span>最近批次</span><strong>${escapeHTML(String(batchId || '--'))}</strong><small>${escapeHTML(batchTime ? formatDateTime(batchTime) : '时间待记录')}${batchCount !== null ? ` · ${formatInteger(batchCount)} 条` : ''}</small>`;
+            batchNode.innerHTML = `<span>当前批次</span><strong>${escapeHTML(String(batchId || '--'))}</strong><small>${escapeHTML(batchTime ? formatDateTime(batchTime) : '时间待记录')}${batchCount !== null ? ` · ${formatInteger(batchCount)} 条` : ''}</small>`;
         }
 
         const version = pick(payload, ['datasetVersion', 'batch.batchId', 'latestBatch.batchId'], null);
@@ -1587,6 +1587,8 @@
         total: pick(item, ['inputCount', 'totalCount'], null),
         succeeded: pick(item, ['successCount', 'processedCount'], null),
         failed: pick(item, ['failedCount', 'failureCount'], null),
+        summary: String(pick(item, ['workerSummary', 'summary'], '')),
+        message: String(pick(item, ['message', 'detail'], '')),
         duration: pick(item, ['durationMs', 'elapsedMs'], null) ?? (pick(item, ['durationSeconds'], null) !== null ? numberValue(pick(item, ['durationSeconds'], 0)) * 1000 : pick(item, ['duration'], null)),
         startedAt: pick(item, ['startedAt', 'startTime', 'createdAt'], null),
         finishedAt: pick(item, ['finishedAt', 'endTime', 'completedAt'], null),
@@ -1604,7 +1606,7 @@
         $('[data-job-page="next"]').disabled = state.jobPage >= state.jobPages;
         const body = $('#jobs-table-body');
         body.innerHTML = jobs.length ? jobs.map((job) => `
-            <tr><td><div class="cell-stack"><strong>${escapeHTML(job.type)}</strong><small>${escapeHTML(job.batchId || (job.id ? `#${job.id}` : '批次待定'))}</small></div></td><td><span class="status-pill ${statusClass(job.status)}">${escapeHTML(job.status)}</span><small>${escapeHTML(job.engine || '')}</small></td><td>${escapeHTML(formatInteger(job.processed))}${job.total !== null ? ` / ${escapeHTML(formatInteger(job.total))}` : ''}</td><td>${escapeHTML(formatDuration(job.duration))}</td><td>${escapeHTML(formatDateTime(job.startedAt))}</td><td>${escapeHTML(formatDateTime(job.finishedAt))}</td></tr>`).join('') : '<tr><td colspan="6"><div class="empty-state">暂无任务运行记录</div></td></tr>';
+            <tr><td><div class="cell-stack"><strong>${escapeHTML(job.type)}</strong><small title="${escapeHTML(job.message || job.summary || '')}">${escapeHTML(job.summary || job.batchId || (job.id ? `#${job.id}` : '批次待定'))}</small></div></td><td><span class="status-pill ${statusClass(job.status)}">${escapeHTML(job.status)}</span><small>${escapeHTML(job.engine || '')}</small></td><td>${escapeHTML(formatInteger(job.processed))}${job.total !== null ? ` / ${escapeHTML(formatInteger(job.total))}` : ''}</td><td>${escapeHTML(formatDuration(job.duration))}</td><td>${escapeHTML(formatDateTime(job.startedAt))}</td><td>${escapeHTML(formatDateTime(job.finishedAt))}</td></tr>`).join('') : '<tr><td colspan="6"><div class="empty-state">暂无任务运行记录</div></td></tr>';
         refreshIcons();
     };
 

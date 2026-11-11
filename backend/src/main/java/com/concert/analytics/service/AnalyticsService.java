@@ -220,6 +220,67 @@ public class AnalyticsService {
         return ratio.compareTo(RISK_ALERT_RATIO_THRESHOLD) >= 0 ? "ALERT" : "WATCH";
     }
 
+    /**
+     * 页面带上地区或平台筛选时，按当前范围实时重算预警对象。
+     *
+     * <p>阈值与 Spark 批处理保持一致（20% 进入关注、40% 进入重点、样本 ≥20），
+     * 区别只是把统计范围从「整批」换成「当前筛选出的这部分评论」。
+     */
+    private List<RiskItem> scopedRisks(DataBatch batch, String region, String platform) {
+        long batchId = batch.getId();
+        List<CommentRepository.ScopeNegativeProjection> artistRows = commentRepository
+                .negativeByArtistScoped(batchId, region, platform, RISK_SCORE_THRESHOLD, RISK_MIN_SAMPLE).stream()
+                .filter(row -> row.getSampleSize() > 0)
+                .filter(row -> ratioOf(row).compareTo(RISK_WATCH_RATIO_THRESHOLD) >= 0)
+                .toList();
+        if (artistRows.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> artists = artistRows.stream()
+                .map(CommentRepository.ScopeNegativeProjection::getLabel)
+                .toList();
+        Map<String, String> topics = new LinkedHashMap<>();
+        Map<String, Long> topicCount = new LinkedHashMap<>();
+        for (CommentRepository.RegionTopicProjection row
+                : commentRepository.negativeTopicsByArtistScoped(
+                        batchId, region, platform, RISK_SCORE_THRESHOLD, artists)) {
+            if (row.getTotal() > topicCount.getOrDefault(row.getRegion(), -1L)) {
+                topicCount.put(row.getRegion(), row.getTotal());
+                topics.put(row.getRegion(), row.getTopic());
+            }
+        }
+
+        List<RiskItem> sorted = new ArrayList<>(artistRows.size());
+        for (CommentRepository.ScopeNegativeProjection row : artistRows) {
+            BigDecimal ratio = ratioOf(row);
+            sorted.add(new RiskItem(
+                    0,
+                    "ARTIST",
+                    row.getLabel(),
+                    row.getLabel(),
+                    ratio,
+                    riskLevel(ratio),
+                    topics.getOrDefault(row.getLabel(), ""),
+                    row.getSampleSize(),
+                    RISK_WATCH_RATIO_THRESHOLD,
+                    RISK_MIN_SAMPLE,
+                    riskRule(ratio, "当前筛选范围"),
+                    batch.getBatchId(),
+                    Instant.now()));
+        }
+        sorted.sort((left, right) -> right.negativeRatio().compareTo(left.negativeRatio()));
+        List<RiskItem> items = new ArrayList<>();
+        int index = 1;
+        for (RiskItem item : sorted.stream().limit(RISK_LIMIT).toList()) {
+            items.add(new RiskItem(index++, item.scopeType(), item.scopeId(), item.objectName(),
+                    item.negativeRatio(), item.riskLevel(), item.primaryNegativeTopic(), item.sampleSize(),
+                    item.threshold(), item.minimumSampleSize(), item.triggerRule(),
+                    item.batchId(), item.detectedAt()));
+        }
+        return items;
+    }
+
     private String riskRule(BigDecimal ratio, String scope) {
         String boundary = ratio.compareTo(RISK_ALERT_RATIO_THRESHOLD) >= 0
                 ? "负面占比 ≥ 40%（重点预警）"
@@ -402,27 +463,44 @@ public class AnalyticsService {
                     .map(group -> new SentimentGroup(
                             group.getLabel(), group.getSampleSize(), decimal(group.getAverageScore())))
                     .toList();
-            topicRisks = commentRepository.negativeByTopic(batchId, RISK_SCORE_THRESHOLD).stream()
+            topicRisks = commentRepository
+                    .negativeByTopicScoped(batchId, normalizedRegion, normalizedPlatform, RISK_SCORE_THRESHOLD).stream()
                     .filter(row -> row.getSampleSize() >= RISK_TOPIC_MIN_SAMPLE)
                     .map(row -> new NegativeBreakdown(
                             row.getLabel(), row.getSampleSize(), row.getNegativeCount(), ratioOf(row)))
                     .sorted((left, right) -> right.negativeRatio().compareTo(left.negativeRatio()))
                     .toList();
             regionRisks = commentRepository
-                    .negativeByRegion(batchId, RISK_SCORE_THRESHOLD, RISK_MIN_SAMPLE).stream()
+                    .negativeByRegionScoped(
+                            batchId, normalizedRegion, normalizedPlatform,
+                            RISK_SCORE_THRESHOLD, RISK_MIN_SAMPLE).stream()
                     .map(row -> new NegativeBreakdown(
                             row.getLabel(), row.getSampleSize(), row.getNegativeCount(), ratioOf(row)))
                     .sorted((left, right) -> right.negativeRatio().compareTo(left.negativeRatio()))
                     .limit(10)
                     .toList();
         }
-        List<RiskItem> risks = latest == null
-                ? List.of()
-                : riskInsightRepository.findByDataBatchIdOrderByNegativeRatioDesc(latest.getId()).stream()
-                .map(DtoMapper::risk)
-                .toList();
-        if (risks.isEmpty()) {
-            risks = realtimeRisks(latest);
+        /*
+         * 风险列表也必须跟着筛选走。
+         *
+         * 预计算的 sentiment_risk 是对整批数据算的，一旦页面选了地区或平台，
+         * 上面的情绪汇总变了、下面的预警却还是全量那几条，同一屏两个口径。
+         * 所以：没筛选时用预计算结果（快、且与 Spark 产出一致）；
+         * 有筛选时按同一套阈值实时重算艺人和主题两个维度。
+         */
+        boolean scoped = normalizedRegion != null || normalizedPlatform != null;
+        List<RiskItem> risks;
+        if (latest == null) {
+            risks = List.of();
+        } else if (scoped) {
+            risks = scopedRisks(latest, normalizedRegion, normalizedPlatform);
+        } else {
+            risks = riskInsightRepository.findByDataBatchIdOrderByNegativeRatioDesc(latest.getId()).stream()
+                    .map(DtoMapper::risk)
+                    .toList();
+            if (risks.isEmpty()) {
+                risks = realtimeRisks(latest);
+            }
         }
         return new SentimentResponse(
                 latest == null ? "empty" : latest.getDatasetVersion(),
